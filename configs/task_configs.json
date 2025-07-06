@@ -1,167 +1,218 @@
 {
-  "version": "1.0.0",
-  "tasks": {
-    "object_color": {
-      "display_name": "Change Object Color",
-      "description": "Modify the color of specific objects",
-      "complexity": "simple",
-      "required_analysis": ["objects", "lighting"],
-      "auto_preserve": [
-        "shadows",
-        "reflections", 
-        "texture",
-        "position",
-        "shape",
-        "material properties"
-      ],
-      "template_key": "object_color_change",
-      "examples": {
-        "en": ["red to blue", "green to yellow", "black to white"],
-        "ru": ["красный в синий", "зеленый в желтый", "черный в белый"]
+  "task_types": {
+    "object_manipulation": {
+      "display_name": "Object Manipulation",
+      "description": "Change object properties like color, state, or attributes",
+      "subtypes": {
+        "color_change": {
+          "name": "Change Color",
+          "template": "Change the {object} color from {current_color} to {target_color}",
+          "preservation": ["shadows", "reflections", "texture", "shape"]
+        },
+        "add_element": {
+          "name": "Add Element",
+          "template": "Add {element} to the {location} of the image",
+          "preservation": ["existing_objects", "composition", "lighting"]
+        },
+        "remove_element": {
+          "name": "Remove Element", 
+          "template": "Remove the {object} from the scene",
+          "preservation": ["background", "surrounding_area", "lighting"]
+        },
+        "modify_attribute": {
+          "name": "Modify Attribute",
+          "template": "Change the {object}'s {attribute} to {new_value}",
+          "preservation": ["identity", "position", "other_attributes"]
+        }
       }
     },
     
     "style_transfer": {
-      "display_name": "Apply Artistic Style",
-      "description": "Transform image into different artistic styles",
-      "complexity": "medium",
-      "required_analysis": ["style", "objects", "composition"],
-      "auto_preserve": [
-        "object_identity",
-        "scene_layout",
-        "recognizable features",
-        "spatial relationships"
-      ],
-      "template_key": "style_transfer",
+      "display_name": "Style Transfer",
+      "description": "Apply artistic styles or visual treatments",
       "subtypes": {
-        "artistic": {
-          "impressionist": "soft brushstrokes, vibrant colors, light emphasis",
-          "cubist": "geometric shapes, multiple perspectives, fragmented forms",
-          "surreal": "dreamlike, impossible combinations, distorted reality",
-          "watercolor": "transparent washes, soft edges, paper texture",
-          "oil_painting": "thick brushstrokes, rich colors, canvas texture"
+        "artistic_style": {
+          "name": "Artistic Style",
+          "template": "Transform the image into {style} style, maintaining all subjects and composition",
+          "preservation": ["composition", "subjects", "scene_layout"]
         },
-        "temporal": {
-          "vintage": "sepia tones, film grain, period-appropriate details",
-          "retro_80s": "neon colors, synthwave aesthetic, VHS effects",
-          "futuristic": "sleek design, holographic elements, advanced tech",
-          "medieval": "castle elements, period clothing, historical accuracy"
+        "time_period": {
+          "name": "Time Period",
+          "template": "Convert the scene to appear as if from {era}, keeping all elements recognizable",
+          "preservation": ["subjects", "poses", "scene_structure"]
         },
-        "cultural": {
-          "anime": "cel-shaded rendering, large eyes, vibrant colors",
-          "western": "dusty atmosphere, warm tones, frontier elements",
-          "noir": "high contrast, dramatic shadows, 1940s aesthetic",
-          "cyberpunk": "neon lights, dystopian elements, tech integration"
+        "medium_change": {
+          "name": "Medium Change",
+          "template": "Render as {medium} while preserving all content",
+          "preservation": ["content", "composition", "details"]
+        },
+        "mood_change": {
+          "name": "Mood Change",
+          "template": "Adjust the mood to be more {mood} through color and lighting",
+          "preservation": ["objects", "composition", "identities"]
         }
       }
     },
     
     "environment_change": {
-      "display_name": "Change Environment",
-      "description": "Replace or modify the surrounding environment",
-      "complexity": "medium",
-      "required_analysis": ["environment", "lighting", "objects"],
-      "auto_preserve": [
-        "main_subjects",
-        "poses",
-        "clothing",
-        "facial_features",
-        "object_positions"
-      ],
-      "template_key": "environment_change",
-      "options": {
-        "locations": ["beach", "mountains", "city", "forest", "desert", "space"],
-        "weather": ["sunny", "rainy", "snowy", "foggy", "stormy"],
-        "time_of_day": ["dawn", "morning", "noon", "afternoon", "sunset", "night"]
+      "display_name": "Environment Changes",
+      "description": "Modify background, setting, or environmental conditions",
+      "subtypes": {
+        "location": {
+          "name": "Change Location",
+          "template": "Transport the {subjects} to {new_location}, maintaining their exact poses and appearances",
+          "preservation": ["subject_poses", "subject_appearance", "relative_positions"]
+        },
+        "weather": {
+          "name": "Change Weather",
+          "template": "Change weather to {weather_condition} while keeping everything else intact",
+          "preservation": ["objects", "structures", "composition"]
+        },
+        "time_of_day": {
+          "name": "Change Time",
+          "template": "Adjust the time of day to {time}, updating lighting and shadows accordingly",
+          "preservation": ["objects", "positions", "scene_content"]
+        },
+        "season": {
+          "name": "Change Season",
+          "template": "Transform the scene to {season} while maintaining all structures and subjects",
+          "preservation": ["buildings", "people", "permanent_features"]
+        }
       }
     },
     
-    "add_remove_elements": {
-      "display_name": "Add or Remove Elements",
-      "description": "Add new objects or remove existing ones",
-      "complexity": "medium",
-      "required_analysis": ["objects", "composition", "environment"],
-      "auto_preserve": [
-        "scene_coherence",
-        "lighting_consistency",
-        "perspective",
-        "scale_relationships"
-      ],
-      "template_key": "add_remove",
-      "common_additions": [
-        "people", "animals", "vehicles", "furniture", 
-        "decorations", "weather_effects", "text", "logos"
-      ]
+    "element_combination": {
+      "display_name": "Element Combination",
+      "description": "Merge or blend multiple elements",
+      "subtypes": {
+        "merge_scenes": {
+          "name": "Merge Scenes",
+          "template": "Seamlessly blend {element1} with {element2} creating a cohesive composition",
+          "preservation": ["key_features", "recognizable_elements"]
+        },
+        "composite_objects": {
+          "name": "Composite Objects",
+          "template": "Combine {object1} and {object2} into a single unified element",
+          "preservation": ["distinctive_features", "proportions"]
+        },
+        "blend_styles": {
+          "name": "Blend Styles",
+          "template": "Merge {style1} and {style2} styles throughout the image",
+          "preservation": ["content", "composition", "subjects"]
+        }
+      }
     },
     
     "state_change": {
-      "display_name": "Change Object State",
-      "description": "Transform objects between different states",
-      "complexity": "complex",
-      "required_analysis": ["objects", "style", "environment"],
-      "auto_preserve": [
-        "object_identity",
-        "position",
-        "surrounding_context"
-      ],
-      "template_key": "state_change",
-      "transformations": {
-        "aging": ["new to old", "clean to weathered", "fresh to decayed"],
-        "physical": ["intact to broken", "dry to wet", "open to closed"],
-        "seasonal": ["summer to winter", "blooming to withered"]
+      "display_name": "State Changes",
+      "description": "Transform object states or conditions",
+      "subtypes": {
+        "age_progression": {
+          "name": "Age Progression",
+          "template": "Age {subject} by {years} years, showing natural progression",
+          "preservation": ["identity", "setting", "clothing"]
+        },
+        "damage_repair": {
+          "name": "Damage/Repair",
+          "template": "Transform {object} from {current_state} to {target_state}",
+          "preservation": ["object_type", "position", "surroundings"]
+        },
+        "transformation": {
+          "name": "Transformation",
+          "template": "Transform {source} into {target} while maintaining spatial position",
+          "preservation": ["position", "scale", "environment"]
+        }
       }
     },
     
     "outpainting": {
-      "display_name": "Extend Image",
-      "description": "Expand image beyond original boundaries",
-      "complexity": "complex",
-      "required_analysis": ["environment", "composition", "style"],
-      "auto_preserve": [
-        "style_consistency",
-        "perspective_continuation",
-        "lighting_direction",
-        "color_palette"
-      ],
-      "template_key": "outpainting",
-      "directions": ["left", "right", "top", "bottom", "all"]
+      "display_name": "Outpainting",
+      "description": "Extend or expand the image canvas",
+      "subtypes": {
+        "extend_scene": {
+          "name": "Extend Scene",
+          "template": "Extend the image {direction} by continuing the existing scene naturally",
+          "preservation": ["style", "perspective", "lighting"]
+        },
+        "add_context": {
+          "name": "Add Context",
+          "template": "Expand to show more {context_type} around the current scene",
+          "preservation": ["central_subject", "style", "atmosphere"]
+        },
+        "expand_canvas": {
+          "name": "Expand Canvas",
+          "template": "Enlarge canvas {direction} and fill with contextually appropriate content",
+          "preservation": ["original_content", "style", "theme"]
+        }
+      }
+    },
+    
+    "lighting_adjustment": {
+      "display_name": "Lighting Adjustment",
+      "description": "Modify lighting conditions and effects",
+      "subtypes": {
+        "direction_change": {
+          "name": "Light Direction",
+          "template": "Change primary light source to come from {direction}",
+          "preservation": ["objects", "colors", "composition"]
+        },
+        "intensity_change": {
+          "name": "Light Intensity", 
+          "template": "Adjust lighting to be {intensity} while maintaining scene coherence",
+          "preservation": ["content", "colors", "details"]
+        },
+        "add_light_source": {
+          "name": "Add Light Source",
+          "template": "Add {light_type} lighting from {position}",
+          "preservation": ["existing_lighting", "objects", "atmosphere"]
+        }
+      }
+    },
+    
+    "texture_change": {
+      "display_name": "Texture Change",
+      "description": "Modify surface textures and materials",
+      "subtypes": {
+        "material_swap": {
+          "name": "Change Material",
+          "template": "Change {object} material from {current_material} to {new_material}",
+          "preservation": ["shape", "position", "lighting_response"]
+        },
+        "surface_treatment": {
+          "name": "Surface Treatment",
+          "template": "Apply {treatment} effect to {surface}",
+          "preservation": ["underlying_structure", "color", "form"]
+        }
+      }
+    },
+    
+    "perspective_shift": {
+      "display_name": "Perspective Shift", 
+      "description": "Change viewpoint or camera angle",
+      "subtypes": {
+        "angle_change": {
+          "name": "Change Angle",
+          "template": "Shift perspective to view from {angle} while showing the same scene",
+          "preservation": ["subjects", "scene_content", "relationships"]
+        },
+        "zoom_adjust": {
+          "name": "Zoom Adjustment",
+          "template": "Adjust view to {zoom_level} while maintaining scene context",
+          "preservation": ["central_subject", "important_elements"]
+        }
+      }
     }
   },
   
-  "complexity_thresholds": {
-    "simple": {
-      "use_llm": false,
-      "min_analysis_depth": 1,
-      "preservation_strength": 0.7
-    },
-    "medium": {
-      "use_llm": "optional",
-      "min_analysis_depth": 2,
-      "preservation_strength": 0.8
-    },
-    "complex": {
-      "use_llm": "recommended",
-      "min_analysis_depth": 3,
-      "preservation_strength": 0.9
-    }
+  "preservation_strengths": {
+    "minimal": 0.3,
+    "balanced": 0.7,
+    "strict": 0.9
   },
   
-  "llm_triggers": {
-    "keywords": [
-      "like in movie",
-      "как в фильме",
-      "style of",
-      "в стиле",
-      "but keep",
-      "но сохранить",
-      "similar to",
-      "похоже на"
-    ],
-    "patterns": [
-      "cultural_reference",
-      "complex_combination",
-      "conditional_modification",
-      "abstract_concept"
-    ]
+  "complexity_indicators": {
+    "simple": ["color", "add", "remove", "basic"],
+    "moderate": ["style", "weather", "time", "blend"],
+    "complex": ["transform", "age", "combine", "cultural"]
   }
 }

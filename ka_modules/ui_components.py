@@ -1,400 +1,213 @@
 """
-UI components for FluxKontext Smart Assistant.
-
-This module handles all Gradio UI building and event handling for the
-assistant interface, following Forge WebUI patterns.
+UI components and helpers for Kontext Assistant.
 """
 
 import gradio as gr
+from typing import Optional, List, Dict, Any, Tuple
 import logging
-from typing import List, Optional, Tuple, Dict, Any, Callable
-from pathlib import Path
 
-logger = logging.getLogger("KontextAssistant.UI")
+# Compatibility
+try:
+    from collections.abc import Mapping
+except ImportError:
+    from collections import Mapping
+
+logger = logging.getLogger("KontextAssistant.UIComponents")
 
 
-def build_assistant_ui(script_instance, kontext_images: Optional[List] = None, 
-                      is_img2img: bool = False) -> List:
-    """
-    Build the complete UI for Kontext Smart Assistant.
+class UIHelpers:
+    """Helper functions for UI components."""
     
-    Args:
-        script_instance: The KontextAssistant instance
-        kontext_images: Optional reference to kontext image components
-        is_img2img: Whether in img2img mode
+    @staticmethod
+    def create_progress_message(step: int, total: int, message: str) -> str:
+        """Create a progress message with visual indicator."""
+        progress = step / total
+        bar_length = 20
+        filled = int(bar_length * progress)
+        bar = "█" * filled + "░" * (bar_length - filled)
+        percentage = int(progress * 100)
+        return f"[{bar}] {percentage}% - {message}"
+    
+    @staticmethod
+    def format_analysis_results(analysis_data: Dict[str, Any]) -> str:
+        """Format analysis results for display."""
+        lines = []
         
-    Returns:
-        List of gradio components for the script
-    """
-    components = []
+        if 'objects' in analysis_data:
+            objects = analysis_data['objects']
+            if isinstance(objects, dict) and 'main' in objects:
+                lines.append(f"**Main Objects**: {', '.join(objects['main'])}")
+            elif isinstance(objects, list):
+                lines.append(f"**Objects**: {', '.join(objects)}")
+        
+        if 'style' in analysis_data:
+            style = analysis_data['style']
+            if isinstance(style, dict):
+                if 'artistic' in style:
+                    lines.append(f"**Style**: {style['artistic']}")
+                if 'mood' in style:
+                    lines.append(f"**Mood**: {style['mood']}")
+            else:
+                lines.append(f"**Style**: {style}")
+        
+        if 'environment' in analysis_data:
+            env = analysis_data['environment']
+            if isinstance(env, dict):
+                if 'setting' in env:
+                    lines.append(f"**Setting**: {env['setting']}")
+                if 'time_of_day' in env:
+                    lines.append(f"**Time**: {env['time_of_day']}")
+        
+        return "\n".join(lines) if lines else "No analysis data available"
     
-    with gr.Group(elem_id="kontext_assistant_group"):
-        gr.Markdown("### 🤖 Kontext Smart Assistant")
-        gr.Markdown(
-            "Analyze your context images and generate perfect prompts for FLUX.1 Kontext. "
-            "Upload images in the main Kontext section above, then use this assistant."
+    @staticmethod
+    def create_task_info(task_type: str, subtype: str) -> str:
+        """Create informative text about selected task."""
+        task_descriptions = {
+            "object_manipulation": "Modify object properties like color, size, or position",
+            "style_transfer": "Apply artistic styles or visual treatments",
+            "environment_change": "Change background, weather, or time of day",
+            "element_combination": "Merge or blend multiple elements",
+            "state_change": "Transform objects between different states",
+            "outpainting": "Extend the image beyond current boundaries",
+            "lighting_adjustment": "Modify lighting conditions and effects",
+            "texture_change": "Change surface materials and textures",
+            "perspective_shift": "Change viewpoint or camera angle"
+        }
+        
+        description = task_descriptions.get(task_type, "Custom image modification")
+        return f"**Task**: {description}\n**Action**: {subtype.replace('_', ' ').title()}"
+
+
+class PromptHistoryManager:
+    """Manages prompt generation history."""
+    
+    def __init__(self, max_history: int = 10):
+        self.history: List[Dict[str, Any]] = []
+        self.max_history = max_history
+    
+    def add_entry(self, task_type: str, user_intent: str, generated_prompt: str) -> None:
+        """Add a new history entry."""
+        entry = {
+            'task_type': task_type,
+            'user_intent': user_intent,
+            'generated_prompt': generated_prompt,
+            'timestamp': self._get_timestamp()
+        }
+        
+        self.history.insert(0, entry)  # Add to beginning
+        
+        # Limit history size
+        if len(self.history) > self.max_history:
+            self.history = self.history[:self.max_history]
+    
+    def get_history_display(self) -> List[List[str]]:
+        """Get history formatted for Gradio dataframe."""
+        return [
+            [
+                entry['timestamp'],
+                entry['task_type'],
+                entry['user_intent'][:50] + '...' if len(entry['user_intent']) > 50 else entry['user_intent'],
+                entry['generated_prompt'][:100] + '...' if len(entry['generated_prompt']) > 100 else entry['generated_prompt']
+            ]
+            for entry in self.history
+        ]
+    
+    def get_entry(self, index: int) -> Optional[Dict[str, Any]]:
+        """Get a specific history entry."""
+        if 0 <= index < len(self.history):
+            return self.history[index]
+        return None
+    
+    def clear(self) -> None:
+        """Clear all history."""
+        self.history = []
+    
+    @staticmethod
+    def _get_timestamp() -> str:
+        """Get current timestamp string."""
+        from datetime import datetime
+        return datetime.now().strftime("%H:%M:%S")
+
+
+def create_analysis_display(image_index: int) -> Tuple[gr.Accordion, gr.Markdown]:
+    """Create analysis display components."""
+    with gr.Accordion(f"Analysis Results {image_index + 1}", open=False, visible=False) as accordion:
+        display = gr.Markdown(
+            value="",
+            elem_id=f"ka_analysis_display_{image_index}"
+        )
+    return accordion, display
+
+
+def create_task_selector() -> Tuple[gr.Dropdown, gr.Dropdown]:
+    """Create task type and subtype selectors."""
+    task_type = gr.Dropdown(
+        label="Task Type",
+        choices=[
+            "object_manipulation",
+            "style_transfer",
+            "environment_change",
+            "element_combination",
+            "state_change",
+            "outpainting",
+            "lighting_adjustment",
+            "texture_change",
+            "perspective_shift"
+        ],
+        value="object_manipulation",
+        interactive=True,
+        elem_id="ka_task_type"
+    )
+    
+    subtype = gr.Dropdown(
+        label="Specific Action",
+        choices=["color_change", "add_element", "remove_element"],
+        value="color_change",
+        interactive=True,
+        elem_id="ka_subtype"
+    )
+    
+    return task_type, subtype
+
+
+def create_advanced_options() -> Dict[str, Any]:
+    """Create advanced option controls."""
+    with gr.Accordion("Advanced Options", open=False) as accordion:
+        preserve_strength = gr.Slider(
+            label="Preservation Strength",
+            minimum=0.0,
+            maximum=1.0,
+            value=0.7,
+            step=0.1,
+            info="How strongly to preserve unchanged elements"
         )
         
-        # Analysis section for each image
-        with gr.Group():
-            gr.Markdown("#### 📊 Image Analysis")
-            
-            analyze_buttons = []
-            analysis_outputs = []
-            analysis_accordions = []
-            
-            # Create analysis UI for up to 3 images
-            for i in range(3):
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        btn = gr.Button(
-                            f"🔍 Analyze Image {i+1}",
-                            variant="secondary",
-                            size="sm",
-                            elem_id=f"analyze_btn_{i}"
-                        )
-                        analyze_buttons.append(btn)
-                    
-                    with gr.Column(scale=3):
-                        # Collapsible analysis results
-                        with gr.Accordion(
-                            f"Analysis Results {i+1}",
-                            open=False,
-                            elem_id=f"analysis_accordion_{i}"
-                        ) as accordion:
-                            analysis_accordions.append(accordion)
-                            
-                            output = gr.Markdown(
-                                value="*No analysis yet*",
-                                elem_id=f"analysis_output_{i}"
-                            )
-                            analysis_outputs.append(output)
+        detail_level = gr.Radio(
+            label="Detail Level",
+            choices=["concise", "balanced", "detailed"],
+            value="balanced",
+            info="Amount of detail in generated prompt"
+        )
         
-        # Task selection and prompt generation
-        with gr.Group():
-            gr.Markdown("#### 🎯 Prompt Generation")
-            
-            with gr.Row():
-                task_type = gr.Dropdown(
-                    label="Task Type",
-                    choices=[
-                        ("Change Object Color", "object_color"),
-                        ("Change Object State", "object_state"),
-                        ("Add Elements", "add_object"),
-                        ("Remove Elements", "remove_object"),
-                        ("Artistic Style Transfer", "style_artistic"),
-                        ("Time Period Style", "style_temporal"),
-                        ("Change Weather", "environment_weather"),
-                        ("Change Time of Day", "environment_time"),
-                        ("Change Location", "environment_location"),
-                        ("Extend Image (Outpainting)", "outpainting")
-                    ],
-                    value="object_color",
-                    elem_id="task_type_dropdown"
-                )
-                
-                # Task-specific help
-                task_help = gr.Markdown(
-                    value=_get_task_help("object_color"),
-                    elem_id="task_help_text"
-                )
-            
-            user_intent = gr.Textbox(
-                label="What do you want to do?",
-                placeholder="Example: make the car blue, add rain, change to sunset...",
-                lines=2,
-                elem_id="user_intent_input"
-            )
-            
-            # Generate button
-            generate_btn = gr.Button(
-                "✨ Generate Prompt",
-                variant="primary",
-                elem_id="generate_prompt_btn"
-            )
-            
-            # Generated prompt output
-            generated_prompt = gr.Textbox(
-                label="Generated Prompt",
-                lines=4,
-                interactive=True,
-                elem_id="generated_prompt_output"
-            )
-            
-            # Action buttons
-            with gr.Row():
-                copy_btn = gr.Button(
-                    "📋 Copy to Prompt",
-                    size="sm",
-                    elem_id="copy_prompt_btn"
-                )
-                
-                reset_btn = gr.Button(
-                    "🔄 Reset",
-                    size="sm",
-                    elem_id="reset_btn"
-                )
+        include_analysis = gr.Checkbox(
+            label="Include image analysis in prompt",
+            value=True,
+            info="Use Florence-2 analysis to enhance prompt"
+        )
         
-        # Advanced options (collapsible)
-        with gr.Accordion("⚙️ Advanced Options", open=False):
-            use_enhancement = gr.Checkbox(
-                label="Use Phi-3 Enhancement (Better for complex/creative requests)",
-                value=False,
-                elem_id="use_enhancement_checkbox"
-            )
-            
-            preservation_strength = gr.Slider(
-                label="Context Preservation Strength",
-                minimum=0.5,
-                maximum=1.0,
-                value=0.8,
-                step=0.05,
-                elem_id="preservation_slider"
-            )
-            
-            show_details = gr.Checkbox(
-                label="Show detailed analysis",
-                value=False,
-                elem_id="show_details_checkbox"
-            )
-            
-            # Debug info
-            with gr.Accordion("🐛 Debug Info", open=False):
-                debug_output = gr.Textbox(
-                    label="Debug Information",
-                    lines=5,
-                    interactive=False,
-                    elem_id="debug_output"
-                )
-    
-    # Store components for reference
-    components = [
-        task_type,
-        user_intent,
-        generated_prompt,
-        use_enhancement,
-        preservation_strength,
-        show_details,
-        debug_output
-    ]
-    
-    # Add buttons and outputs to components
-    components.extend(analyze_buttons)
-    components.extend(analysis_outputs)
-    
-    # Set up event handlers
-    _setup_event_handlers(
-        script_instance=script_instance,
-        analyze_buttons=analyze_buttons,
-        analysis_outputs=analysis_outputs,
-        analysis_accordions=analysis_accordions,
-        task_type=task_type,
-        task_help=task_help,
-        user_intent=user_intent,
-        generate_btn=generate_btn,
-        generated_prompt=generated_prompt,
-        use_enhancement=use_enhancement,
-        preservation_strength=preservation_strength,
-        copy_btn=copy_btn,
-        reset_btn=reset_btn,
-        debug_output=debug_output,
-        show_details=show_details
-    )
-    
-    return components
-
-
-def _setup_event_handlers(
-    script_instance,
-    analyze_buttons: List[gr.Button],
-    analysis_outputs: List[gr.Markdown],
-    analysis_accordions: List[gr.Accordion],
-    task_type: gr.Dropdown,
-    task_help: gr.Markdown,
-    user_intent: gr.Textbox,
-    generate_btn: gr.Button,
-    generated_prompt: gr.Textbox,
-    use_enhancement: gr.Checkbox,
-    preservation_strength: gr.Slider,
-    copy_btn: gr.Button,
-    reset_btn: gr.Button,
-    debug_output: gr.Textbox,
-    show_details: gr.Checkbox
-):
-    """Set up all event handlers for the UI components"""
-    
-    # Analysis button handlers
-    for i, (btn, output, accordion) in enumerate(zip(
-        analyze_buttons, analysis_outputs, analysis_accordions
-    )):
-        def create_analyze_handler(idx):
-            def analyze_handler():
-                try:
-                    # This is a placeholder - actual implementation would get the image
-                    # from kontext_images or find it in the UI
-                    logger.info(f"Analyzing image {idx + 1}")
-                    
-                    # For now, return a mock analysis
-                    analysis_text = f"""
-🎯 **Objects**: car (red), trees, road
-🎨 **Style**: photorealistic, bright daylight
-🌍 **Environment**: urban street, clear weather
-💡 **Lighting**: natural sunlight from top-right
-📐 **Composition**: centered subject, eye-level view
-                    """.strip()
-                    
-                    return {
-                        output: analysis_text,
-                        accordion: gr.update(open=True)
-                    }
-                    
-                except Exception as e:
-                    logger.error(f"Error in analysis: {str(e)}")
-                    return {
-                        output: f"❌ Error: {str(e)}",
-                        accordion: gr.update(open=True)
-                    }
-            
-            return analyze_handler
-        
-        btn.click(
-            fn=create_analyze_handler(i),
-            inputs=[],
-            outputs=[output, accordion]
+        # Future options (disabled for now)
+        use_phi3 = gr.Checkbox(
+            label="Use Phi-3 enhancement (not available)",
+            value=False,
+            interactive=False,
+            info="Advanced prompt enhancement with Phi-3 mini"
         )
     
-    # Task type change handler
-    def on_task_change(task):
-        help_text = _get_task_help(task)
-        return help_text
-    
-    task_type.change(
-        fn=on_task_change,
-        inputs=[task_type],
-        outputs=[task_help]
-    )
-    
-    # Generate prompt handler
-    def generate_prompt_handler(task, intent, use_enh, preservation, show_det):
-        try:
-            logger.info(f"Generating prompt - Task: {task}, Intent: {intent}")
-            
-            # Get cached analyses if available
-            analyses = getattr(script_instance, '_analysis_cache', {})
-            
-            # Generate prompt
-            prompt = script_instance.generate_prompt(
-                task_type=task,
-                user_intent=intent,
-                use_enhancement=use_enh,
-                image_analyses=list(analyses.values()) if analyses else None
-            )
-            
-            # Debug info
-            debug_info = f"Task: {task}\nIntent: {intent}\nEnhancement: {use_enh}\n"
-            debug_info += f"Analyses available: {len(analyses)}\n"
-            debug_info += f"Generated length: {len(prompt)} chars"
-            
-            return prompt, debug_info
-            
-        except Exception as e:
-            logger.error(f"Error generating prompt: {str(e)}")
-            return f"Error: {str(e)}", f"Error occurred: {str(e)}"
-    
-    generate_btn.click(
-        fn=generate_prompt_handler,
-        inputs=[task_type, user_intent, use_enhancement, preservation_strength, show_details],
-        outputs=[generated_prompt, debug_output]
-    )
-    
-    # Copy prompt handler (placeholder - actual implementation would interact with main prompt field)
-    def copy_prompt_handler(prompt):
-        logger.info("Copy prompt clicked")
-        return gr.update(value="✅ Copied!")
-    
-    copy_btn.click(
-        fn=copy_prompt_handler,
-        inputs=[generated_prompt],
-        outputs=[copy_btn]
-    ).then(
-        lambda: gr.update(value="📋 Copy to Prompt"),
-        inputs=[],
-        outputs=[copy_btn],
-        _js="setTimeout(() => {}, 2000)"  # Reset button text after 2 seconds
-    )
-    
-    # Reset handler
-    def reset_handler():
-        return (
-            "",  # user_intent
-            "",  # generated_prompt
-            False,  # use_enhancement
-            0.8,  # preservation_strength
-            ""  # debug_output
-        )
-    
-    reset_btn.click(
-        fn=reset_handler,
-        inputs=[],
-        outputs=[user_intent, generated_prompt, use_enhancement, 
-                preservation_strength, debug_output]
-    )
-
-
-def _get_task_help(task_type: str) -> str:
-    """Get help text for a specific task type"""
-    
-    help_texts = {
-        "object_color": "**Object Color Change** - Changes the color of specific objects. Example: 'red car to blue'",
-        "object_state": "**Object State Change** - Transforms objects between states. Example: 'open the door'",
-        "add_object": "**Add Elements** - Adds new objects to the scene. Example: 'add a cat on the sofa'",
-        "remove_object": "**Remove Elements** - Removes objects cleanly. Example: 'remove the person'",
-        "style_artistic": "**Artistic Style** - Applies art styles. Example: 'impressionist style'",
-        "style_temporal": "**Time Period Style** - Changes era aesthetic. Example: 'vintage 1950s'",
-        "environment_weather": "**Weather Change** - Modifies weather conditions. Example: 'make it rainy'",
-        "environment_time": "**Time of Day** - Changes lighting and time. Example: 'sunset lighting'",
-        "environment_location": "**Location Change** - Replaces background. Example: 'beach background'",
-        "outpainting": "**Extend Image** - Expands beyond borders. Example: 'extend left with more trees'"
+    return {
+        'accordion': accordion,
+        'preserve_strength': preserve_strength,
+        'detail_level': detail_level,
+        'include_analysis': include_analysis,
+        'use_phi3': use_phi3
     }
-    
-    return help_texts.get(task_type, "Select a task type to see description")
-
-
-def create_quick_access_buttons() -> List[gr.Button]:
-    """Create quick access buttons for common tasks"""
-    
-    common_tasks = [
-        ("🎨 Change Color", "object_color"),
-        ("🌦️ Change Weather", "environment_weather"),
-        ("🎭 Apply Style", "style_artistic"),
-        ("➕ Add Object", "add_object")
-    ]
-    
-    buttons = []
-    with gr.Row():
-        for label, task in common_tasks:
-            btn = gr.Button(label, size="sm")
-            buttons.append((btn, task))
-    
-    return buttons
-
-
-# Standalone function for testing UI
-if __name__ == "__main__":
-    # Test UI building
-    with gr.Blocks() as demo:
-        gr.Markdown("# FluxKontext Smart Assistant Test UI")
-        
-        # Mock script instance
-        class MockScript:
-            def generate_prompt(self, **kwargs):
-                return "Generated test prompt based on your input..."
-            
-            def analyze_image(self, image, index):
-                return {"objects": {"main": ["test object"]}}
-        
-        mock_script = MockScript()
-        components = build_assistant_ui(mock_script)
-        
-    print("UI components created successfully!")
-    print(f"Total components: {len(components)}")
