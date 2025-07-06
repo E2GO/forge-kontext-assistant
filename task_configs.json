@@ -1,0 +1,167 @@
+{
+  "version": "1.0.0",
+  "tasks": {
+    "object_color": {
+      "display_name": "Change Object Color",
+      "description": "Modify the color of specific objects",
+      "complexity": "simple",
+      "required_analysis": ["objects", "lighting"],
+      "auto_preserve": [
+        "shadows",
+        "reflections", 
+        "texture",
+        "position",
+        "shape",
+        "material properties"
+      ],
+      "template_key": "object_color_change",
+      "examples": {
+        "en": ["red to blue", "green to yellow", "black to white"],
+        "ru": ["красный в синий", "зеленый в желтый", "черный в белый"]
+      }
+    },
+    
+    "style_transfer": {
+      "display_name": "Apply Artistic Style",
+      "description": "Transform image into different artistic styles",
+      "complexity": "medium",
+      "required_analysis": ["style", "objects", "composition"],
+      "auto_preserve": [
+        "object_identity",
+        "scene_layout",
+        "recognizable features",
+        "spatial relationships"
+      ],
+      "template_key": "style_transfer",
+      "subtypes": {
+        "artistic": {
+          "impressionist": "soft brushstrokes, vibrant colors, light emphasis",
+          "cubist": "geometric shapes, multiple perspectives, fragmented forms",
+          "surreal": "dreamlike, impossible combinations, distorted reality",
+          "watercolor": "transparent washes, soft edges, paper texture",
+          "oil_painting": "thick brushstrokes, rich colors, canvas texture"
+        },
+        "temporal": {
+          "vintage": "sepia tones, film grain, period-appropriate details",
+          "retro_80s": "neon colors, synthwave aesthetic, VHS effects",
+          "futuristic": "sleek design, holographic elements, advanced tech",
+          "medieval": "castle elements, period clothing, historical accuracy"
+        },
+        "cultural": {
+          "anime": "cel-shaded rendering, large eyes, vibrant colors",
+          "western": "dusty atmosphere, warm tones, frontier elements",
+          "noir": "high contrast, dramatic shadows, 1940s aesthetic",
+          "cyberpunk": "neon lights, dystopian elements, tech integration"
+        }
+      }
+    },
+    
+    "environment_change": {
+      "display_name": "Change Environment",
+      "description": "Replace or modify the surrounding environment",
+      "complexity": "medium",
+      "required_analysis": ["environment", "lighting", "objects"],
+      "auto_preserve": [
+        "main_subjects",
+        "poses",
+        "clothing",
+        "facial_features",
+        "object_positions"
+      ],
+      "template_key": "environment_change",
+      "options": {
+        "locations": ["beach", "mountains", "city", "forest", "desert", "space"],
+        "weather": ["sunny", "rainy", "snowy", "foggy", "stormy"],
+        "time_of_day": ["dawn", "morning", "noon", "afternoon", "sunset", "night"]
+      }
+    },
+    
+    "add_remove_elements": {
+      "display_name": "Add or Remove Elements",
+      "description": "Add new objects or remove existing ones",
+      "complexity": "medium",
+      "required_analysis": ["objects", "composition", "environment"],
+      "auto_preserve": [
+        "scene_coherence",
+        "lighting_consistency",
+        "perspective",
+        "scale_relationships"
+      ],
+      "template_key": "add_remove",
+      "common_additions": [
+        "people", "animals", "vehicles", "furniture", 
+        "decorations", "weather_effects", "text", "logos"
+      ]
+    },
+    
+    "state_change": {
+      "display_name": "Change Object State",
+      "description": "Transform objects between different states",
+      "complexity": "complex",
+      "required_analysis": ["objects", "style", "environment"],
+      "auto_preserve": [
+        "object_identity",
+        "position",
+        "surrounding_context"
+      ],
+      "template_key": "state_change",
+      "transformations": {
+        "aging": ["new to old", "clean to weathered", "fresh to decayed"],
+        "physical": ["intact to broken", "dry to wet", "open to closed"],
+        "seasonal": ["summer to winter", "blooming to withered"]
+      }
+    },
+    
+    "outpainting": {
+      "display_name": "Extend Image",
+      "description": "Expand image beyond original boundaries",
+      "complexity": "complex",
+      "required_analysis": ["environment", "composition", "style"],
+      "auto_preserve": [
+        "style_consistency",
+        "perspective_continuation",
+        "lighting_direction",
+        "color_palette"
+      ],
+      "template_key": "outpainting",
+      "directions": ["left", "right", "top", "bottom", "all"]
+    }
+  },
+  
+  "complexity_thresholds": {
+    "simple": {
+      "use_llm": false,
+      "min_analysis_depth": 1,
+      "preservation_strength": 0.7
+    },
+    "medium": {
+      "use_llm": "optional",
+      "min_analysis_depth": 2,
+      "preservation_strength": 0.8
+    },
+    "complex": {
+      "use_llm": "recommended",
+      "min_analysis_depth": 3,
+      "preservation_strength": 0.9
+    }
+  },
+  
+  "llm_triggers": {
+    "keywords": [
+      "like in movie",
+      "как в фильме",
+      "style of",
+      "в стиле",
+      "but keep",
+      "но сохранить",
+      "similar to",
+      "похоже на"
+    ],
+    "patterns": [
+      "cultural_reference",
+      "complex_combination",
+      "conditional_modification",
+      "abstract_concept"
+    ]
+  }
+}
