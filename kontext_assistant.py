@@ -10,6 +10,17 @@ import sys
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 
+# Fix for Python 3.10+ compatibility
+if sys.version_info >= (3, 10):
+    import collections
+    import collections.abc
+    collections.Mapping = collections.abc.Mapping
+    collections.MutableMapping = collections.abc.MutableMapping
+    collections.Sequence = collections.abc.Sequence
+    collections.MutableSequence = collections.abc.MutableSequence
+    collections.Set = collections.abc.Set
+    collections.MutableSet = collections.abc.MutableSet
+
 # Add extension directory to path for imports
 ext_dir = Path(__file__).parent
 if ext_dir not in sys.path:
