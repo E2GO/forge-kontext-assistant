@@ -65,12 +65,12 @@ class PromptGenerator:
         # Extract context from analyses
         context = self._extract_context(image_analyses) if image_analyses else {}
         
-        # Generate prompt using template with proper parameters
-        # Extract parameters based on task type
-        template_params = self._extract_template_params(task_type, parsed_intent, user_intent)
-        
-        # Call template method with unpacked parameters
-        base_prompt = template_method(**template_params)
+        # Generate prompt using template
+        base_prompt = template_method(
+            target=parsed_intent.get('target', 'the main subject'),
+            action=parsed_intent.get('action', user_intent),
+            context=context
+        )
         
         # Add preservation rules based on context strength
         preservation_rules = self._get_preservation_rules(task_type, context_strength)
@@ -121,67 +121,6 @@ class PromptGenerator:
         
         return parsed
     
-    def _extract_template_params(self, task_type: str, parsed_intent: Dict[str, str], 
-                                user_intent: str) -> Dict[str, Any]:
-        """Extract proper parameters for each template type"""
-        
-        params = {}
-        
-        if task_type == "object_color":
-            params = {
-                'target': parsed_intent.get('target', 'object'),
-                'current_color': parsed_intent.get('current_color', 'current color'),
-                'new_color': parsed_intent.get('new_color', 'new color')
-            }
-        
-        elif task_type == "object_state":
-            params = {
-                'target': parsed_intent.get('target', 'object'),
-                'new_state': parsed_intent.get('new_state', user_intent)
-            }
-        
-        elif task_type == "style_transfer":
-            params = {
-                'style': parsed_intent.get('style', user_intent)
-            }
-        
-        elif task_type == "environment_change":
-            params = {
-                'new_environment': parsed_intent.get('target_env', user_intent)
-            }
-        
-        elif task_type == "element_combination":
-            # Parse elements from intent
-            elements = parsed_intent.get('elements', [])
-            if not elements and 'and' in user_intent:
-                elements = [part.strip() for part in user_intent.split('and')]
-            elif not elements:
-                elements = [user_intent]
-            params = {
-                'elements': elements
-            }
-        
-        elif task_type == "state_changes":
-            params = {
-                'subject': parsed_intent.get('target', 'subject'),
-                'start_state': parsed_intent.get('start_state', 'original'),
-                'end_state': parsed_intent.get('end_state', user_intent)
-            }
-        
-        elif task_type == "outpainting":
-            # Extract direction from intent
-            directions = ['left', 'right', 'up', 'down', 'top', 'bottom']
-            direction = 'outward'
-            for d in directions:
-                if d in user_intent.lower():
-                    direction = d
-                    break
-            params = {
-                'direction': parsed_intent.get('direction', direction)
-            }
-        
-        return params
-
     def _extract_context(self, analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract relevant context from image analyses"""
         context = {

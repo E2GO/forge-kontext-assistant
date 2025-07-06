@@ -22,8 +22,8 @@ from typing import Optional, List, Dict, Any, Tuple
 
 # Forge WebUI imports
 try:
-    from ka_modules import scripts, shared
-    from ka_modules.ui_components import InputAccordion
+    from modules import scripts, shared
+    from modules.ui_components import InputAccordion
 except ImportError:
     # Fallback for testing outside Forge
     scripts = None
@@ -51,7 +51,7 @@ class KontextAssistant(scripts.Script if scripts else object):
         
     def title(self):
         """Return the title of the script"""
-        return "Kontext Smart Assistant"
+        return "🤖 Kontext Smart Assistant"
     
     def show(self, is_img2img):
         """Determine when to show the script"""
@@ -155,8 +155,9 @@ class KontextAssistant(scripts.Script if scripts else object):
     
     def ui(self, is_img2img):
         """Create the UI components"""
-        with gr.Group():
-            gr.Markdown("### 🤖 Kontext Smart Assistant")
+        # Create accordion for Smart Assistant
+        with InputAccordion(False, label="🤖 Kontext Smart Assistant") as enabled:
+            gr.Markdown("*Analyzes your context images and generates proper FLUX.1 Kontext prompts*")
             gr.Markdown("*Analyzes your context images and generates proper FLUX.1 Kontext prompts*")
             
             # Analysis section

@@ -10,9 +10,9 @@ from pathlib import Path
 from enum import Enum
 from PIL import Image
 
-from ka_modules import scripts, shared
-from ka_modules.ui_components import InputAccordion
-from ka_modules.sd_samplers_common import images_tensor_to_samples, approximation_indexes
+from modules import scripts, shared
+from modules.ui_components import InputAccordion
+from modules.sd_samplers_common import images_tensor_to_samples, approximation_indexes
 from backend.misc.image_resize import adaptive_resize
 from backend.nn.flux import IntegratedFluxTransformer2DModel
 from einops import rearrange, repeat
