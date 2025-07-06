@@ -3,17 +3,6 @@ Kontext Smart Assistant - Intelligent prompt generation for FLUX.1 Kontext
 Simplified version for testing with proper imports
 """
 
-# Python 3.10+ compatibility patch for huggingface_hub
-import sys
-import collections.abc
-if sys.version_info >= (3, 10):
-    collections.Mapping = collections.abc.Mapping
-    collections.MutableMapping = collections.abc.MutableMapping
-    collections.Iterable = collections.abc.Iterable
-    collections.MutableSet = collections.abc.MutableSet
-    collections.Callable = collections.abc.Callable
-
-
 import gradio as gr
 import torch
 import logging

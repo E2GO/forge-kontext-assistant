@@ -15,25 +15,25 @@ print("=" * 50)
 
 # Test 1: Import modules
 try:
-    from modules import templates
+    from ka_modules import templates
     print("✅ Templates module loaded")
 except Exception as e:
     print(f"❌ Templates module failed: {e}")
 
 try:
-    from modules import ui_components  
+    from ka_modules import ui_components  
     print("✅ UI components module loaded")
 except Exception as e:
     print(f"❌ UI components failed: {e}")
 
 try:
-    from modules import prompt_generator
+    from ka_modules import prompt_generator
     print("✅ Prompt generator module loaded")
 except Exception as e:
     print(f"❌ Prompt generator failed: {e}")
 
 try:
-    from modules import image_analyzer
+    from ka_modules import image_analyzer
     print("✅ Image analyzer module loaded")
 except Exception as e:
     print(f"❌ Image analyzer failed: {e}")
@@ -42,7 +42,7 @@ except Exception as e:
 print("\n" + "=" * 50)
 print("Testing template system...")
 try:
-    from modules.templates import get_template, TemplateBuilder
+    from ka_modules.templates import get_template, TemplateBuilder
     
     template = get_template("object_color")
     if template:
@@ -62,7 +62,7 @@ except Exception as e:
 print("\n" + "=" * 50)
 print("Testing prompt generator...")
 try:
-    from modules.prompt_generator import PromptGenerator
+    from ka_modules.prompt_generator import PromptGenerator
     
     generator = PromptGenerator()
     test_prompt = generator.generate(
