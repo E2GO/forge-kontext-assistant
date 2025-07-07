@@ -1,539 +1,617 @@
 """
-Image analysis module for Kontext Assistant
-Supports both mock mode and real Florence-2 analysis
+Smart Image Analyzer with automatic GPU compatibility detection
+Supports RTX 4090/5090 with automatic fallback to mock mode
 """
 
-# Fix collections compatibility BEFORE any other imports
+import logging
+from typing import Dict, Any, Optional, List, Union
+from PIL import Image
+import torch
+from pathlib import Path
+import json
+import time
+from functools import lru_cache
+
+# Fix for Python 3.10 collections compatibility
 import collections
 import collections.abc
-for attr in dir(collections.abc):
-    if not hasattr(collections, attr):
-        setattr(collections, attr, getattr(collections.abc, attr))
+for attr_name in dir(collections.abc):
+    attr = getattr(collections.abc, attr_name)
+    if not hasattr(collections, attr_name):
+        setattr(collections, attr_name, attr)
 
-import logging
-import torch
-import time
-import gc
-import os
-import random
-from typing import Dict, Any, Optional, List
-from PIL import Image
-from pathlib import Path
-
-logger = logging.getLogger("ImageAnalyzer")
-
-# Check if we should use Florence-2
-USE_FLORENCE2 = os.environ.get("KONTEXT_USE_FLORENCE2", "auto").lower()
-
-# Try to import required libraries
+# Try to import transformers for Florence-2
 try:
     from transformers import AutoProcessor, AutoModelForCausalLM
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
-    logger.info("transformers not available - using mock mode")
+    
+# Configure logging
+logger = logging.getLogger(__name__)
 
-
-class Florence2Analyzer:
-    """Real Florence-2 based image analyzer"""
+class SmartImageAnalyzer:
+    """
+    Smart analyzer that automatically handles GPU compatibility issues
+    Falls back to mock mode when Florence-2 fails
+    """
     
-    def __init__(self, device: Optional[str] = None, load_in_8bit: bool = False):
-        self.device = torch.device(device if device else ('cuda' if torch.cuda.is_available() else 'cpu'))
-        self.load_in_8bit = load_in_8bit
-        self.model = None
-        self.processor = None
-        self.model_id = "microsoft/Florence-2-large"
-        self.initialized = False
-        self._cache = {}  # Simple results cache
-        self._cache_size = 10  # Maximum cache size
-        
-        logger.info(f"Florence2Analyzer initialized for device: {self.device}")
-    
-    def load_model(self, force_reload: bool = False):
-        """Load Florence-2 model and processor"""
-        if self.initialized and not force_reload:
-            logger.info("Model already loaded")
-            return
-        
-        if not TRANSFORMERS_AVAILABLE:
-            logger.error("Transformers library not available!")
-            return
-        
-        try:
-            logger.info(f"Loading Florence-2 model: {self.model_id}")
-            start_time = time.time()
-            
-            # Load processor
-            self.processor = AutoProcessor.from_pretrained(
-                self.model_id,
-                trust_remote_code=True
-            )
-            
-            # Load model with memory optimization
-            model_kwargs = {
-                "trust_remote_code": True,
-                "torch_dtype": torch.float16 if self.device == "cuda" else torch.float32,
-            }
-            
-            if self.load_in_8bit and self.device == "cuda":
-                model_kwargs["load_in_8bit"] = True
-                logger.info("Loading model in 8-bit for memory efficiency")
-            
-            # Load model without device_map for Florence-2
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_id,
-                **model_kwargs
-            )
-            
-            # Move model to device manually
-            if self.device == "cuda":
-                if not self.load_in_8bit:
-                    self.model = self.model.half()  # Use half precision
-                self.model = self.model.to(self.device)
-                logger.info(f"Model moved to {self.device}")
-            
-            # Ensure model is in eval mode
-            self.model.eval()
-            
-            load_time = time.time() - start_time
-            logger.info(f"Model loaded successfully in {load_time:.2f} seconds")
-            
-            # Log memory usage
-            if torch.cuda.is_available():
-                memory_used = torch.cuda.memory_allocated() / 1024**3
-                logger.info(f"GPU memory used: {memory_used:.2f} GB")
-            
-            self.initialized = True
-            
-        except Exception as e:
-            logger.error(f"Failed to load Florence-2 model: {e}")
-            self.initialized = False
-            raise
-    
-    def unload_model(self):
-        """Unload model to free memory"""
-        if self.model is not None:
-            logger.info("Unloading Florence-2 model")
-            # Move to CPU before deletion to free GPU memory
-            if str(self.device) == "cuda":
-                self.model.cpu()
-            del self.model
-            self.model = None
-        
-        if self.processor is not None:
-            del self.processor
-            self.processor = None
-        
-        self.initialized = False
-        
-        # Force garbage collection
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-            
-        logger.info("Model unloaded and memory cleared")
-    
-    def analyze(self, image: Image.Image, tasks: Optional[List[str]] = None) -> Dict[str, Any]:
+    def __init__(self, device: Optional[str] = None, force_mock: bool = False, force_cpu: bool = False):
         """
-        Analyze image using Florence-2
+        Initialize smart image analyzer
         
         Args:
-            image: PIL Image to analyze
-            tasks: List of tasks to perform (if None, performs default set)
-        
-        Returns:
-            Dictionary with structured analysis results
+            device: Device to run model on ('cuda', 'cpu', or None for auto)
+            force_mock: Force mock mode regardless of availability
+            force_cpu: Force CPU mode for compatibility
         """
-        if not self.initialized:
-            logger.warning("Model not loaded, using fallback analysis")
-            return self._fallback_analysis(image)
+        self.model = None
+        self.processor = None
+        self.device = device
+        self.force_mock = force_mock
+        self.force_cpu = force_cpu
+        self.use_mock = force_mock
+        self._initialized = False
+        self._init_attempted = False
+        self._init_error = None
         
-        if tasks is None:
-            tasks = ["<OD>", "<CAPTION>", "<DETAILED_CAPTION>"]
+        # Model configuration
+        self.model_id = "microsoft/Florence-2-large"
+        self.cache_dir = Path.home() / ".cache" / "kontext_assistant"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        results = {}
+        # Auto-detection settings
+        self.gpu_compatibility_mode = False
+        self.detected_gpu = None
         
-        try:
-            # Basic image info
-            results["size"] = f"{image.width}x{image.height}"
-            results["aspect_ratio"] = round(image.width / image.height, 2)
-            results["mode"] = image.mode
-            
-            # Run Florence-2 tasks
-            for task in tasks:
-                task_result = self._run_task(image, task)
-                if task_result:
-                    results[task] = task_result
-            
-            # Convert to structured format
-            structured = self._structure_results(results, image)
-            return structured
-            
-        except Exception as e:
-            logger.error(f"Error during analysis: {e}")
-            return self._fallback_analysis(image)
+        if not force_mock:
+            self._detect_gpu_compatibility()
     
-    def _run_task(self, image: Image.Image, task: str) -> Any:
-        """Run a specific Florence-2 task"""
+    def _detect_gpu_compatibility(self):
+        """Detect GPU and set compatibility mode"""
+        if not torch.cuda.is_available():
+            logger.info("No CUDA GPU detected, will use CPU mode")
+            return
+            
         try:
-            inputs = self.processor(
-                text=task,
-                images=image,
-                return_tensors="pt"
+            gpu_name = torch.cuda.get_device_name(0)
+            self.detected_gpu = gpu_name
+            logger.info(f"Detected GPU: {gpu_name}")
+            
+            # Check for problematic GPUs
+            problematic_gpus = ["RTX 4090", "RTX 5090", "4090", "5090"]
+            if any(gpu in gpu_name for gpu in problematic_gpus):
+                logger.warning(f"{gpu_name} detected - enabling compatibility mode")
+                self.gpu_compatibility_mode = True
+                
+                # Force CPU for these GPUs unless explicitly set
+                if self.device is None and not self.force_cpu:
+                    logger.info("Auto-enabling CPU mode for compatibility")
+                    self.force_cpu = True
+                    
+        except Exception as e:
+            logger.warning(f"Could not detect GPU: {e}")
+    
+    # Найдите метод _ensure_initialized и замените его на этот:
+
+    def _ensure_initialized(self, progress_callback=None):
+        """Lazy loading of Florence-2 model with automatic fallback"""
+        if self._initialized or self.use_mock:
+            return
+            
+        if self._init_attempted and self._init_error:
+            # Don't retry if we already failed
+            logger.warning(f"Previous init failed, using mock mode: {self._init_error}")
+            self.use_mock = True
+            return
+            
+        self._init_attempted = True
+        
+        if not TRANSFORMERS_AVAILABLE:
+            self._init_error = "Transformers not available"
+            self.use_mock = True
+            logger.warning("Transformers not installed, using mock mode")
+            return
+            
+        try:
+            logger.info("Attempting to load Florence-2 model...")
+            start_time = time.time()
+            
+            # Determine device
+            if self.device is None:
+                if self.force_cpu or self.gpu_compatibility_mode:
+                    self.device = "cpu"
+                    logger.info("Using CPU mode for compatibility")
+                else:
+                    self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            
+            if progress_callback:
+                progress_callback("Loading Florence-2 model...", 0.1)
+            
+            # Load processor
+            if progress_callback:
+                progress_callback("Loading processor...", 0.3)
+            
+            self.processor = AutoProcessor.from_pretrained(
+                self.model_id,
+                trust_remote_code=True,
+                cache_dir=self.cache_dir
             )
             
-            # Move to device and ensure correct dtype
-            if self.device == "cuda":
-                # Convert inputs to the same dtype as model
-                model_dtype = next(self.model.parameters()).dtype
-                inputs = {
-                    k: v.to(self.device).to(model_dtype) if isinstance(v, torch.Tensor) and v.dtype.is_floating_point
-                    else v.to(self.device) if isinstance(v, torch.Tensor)
-                    else v
-                    for k, v in inputs.items()
-                }
+            # Load model with appropriate dtype
+            if progress_callback:
+                progress_callback("Loading model weights...", 0.5)
             
-            # Generate
+            if self.device == "cuda":
+                # Try different dtypes for GPU - добавляем bfloat16
+                dtypes_to_try = [torch.float32, torch.float16, torch.bfloat16]
+                
+                for dtype in dtypes_to_try:
+                    try:
+                        logger.info(f"Trying to load model with dtype {dtype}")
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            self.model_id,
+                            torch_dtype=dtype,
+                            trust_remote_code=True,
+                            cache_dir=self.cache_dir
+                        ).to(self.device)
+                        self.model.eval()
+                        
+                        # Test inference to ensure it works
+                        self._test_inference()
+                        
+                        logger.info(f"Model loaded successfully with {dtype}")
+                        break
+                        
+                    except RuntimeError as e:
+                        logger.warning(f"Failed with {dtype}: {e}")
+                        if dtype == dtypes_to_try[-1]:
+                            raise
+                        continue
+            else:
+                # CPU mode - always use float32
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_id,
+                    torch_dtype=torch.float32,
+                    trust_remote_code=True,
+                    cache_dir=self.cache_dir
+                )
+                self.model.eval()
+            
+            load_time = time.time() - start_time
+            logger.info(f"Florence-2 loaded successfully in {load_time:.1f}s on {self.device}")
+            
+            if progress_callback:
+                progress_callback("Model loaded successfully!", 1.0)
+            
+            self._initialized = True
+            
+        except Exception as e:
+            self._init_error = str(e)
+            logger.error(f"Failed to load Florence-2: {e}")
+            logger.info("Falling back to mock mode")
+            self.use_mock = True
+            
+            # Clean up partial loads
+            if self.model is not None:
+                del self.model
+                self.model = None
+            if self.processor is not None:
+                del self.processor
+                self.processor = None
+                
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    def _real_analyze(self, image: Image.Image, detailed: bool) -> Dict[str, Any]:
+        """Perform real Florence-2 analysis with timing"""
+        import time
+        start_time = time.time()
+        
+        analysis = {}
+        
+        # Basic image info
+        analysis['size'] = f"{image.width}x{image.height}"
+        analysis['mode'] = image.mode
+        analysis['analysis_mode'] = 'florence2'
+        
+        # Get detailed caption
+        caption_result = self._run_florence_task(image, "<DETAILED_CAPTION>")
+        if caption_result:
+            raw_description = caption_result.get('<DETAILED_CAPTION>', 'No description available')
+            analysis['description'] = self._clean_description(raw_description)
+        
+        # Get objects with bounding boxes
+        od_result = self._run_florence_task(image, "<OD>")
+        if od_result and '<OD>' in od_result:
+            objects_data = od_result['<OD>']
+            analysis['objects'] = self._process_objects(objects_data)
+        
+        # Analyze regions for composition
+        if detailed:
+            region_result = self._run_florence_task(image, "<DENSE_REGION_CAPTION>")
+            if region_result and '<DENSE_REGION_CAPTION>' in region_result:
+                analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
+        
+        # Extract style characteristics
+        analysis['style'] = self._extract_style_info(analysis.get('description', ''))
+        
+        # Environment info
+        analysis['environment'] = self._extract_environment_info(analysis.get('description', ''))
+        
+        # Add timing info
+        analysis['analysis_time'] = time.time() - start_time
+        logger.info(f"Analysis completed in {analysis['analysis_time']:.2f} seconds")
+        
+        return analysis
+    def _test_inference(self):
+        """Test inference to ensure model works"""
+        try:
+            # Create a small test image
+            test_image = Image.new('RGB', (224, 224), color='white')
+            inputs = self.processor(text="<CAPTION>", images=test_image, return_tensors="pt")
+            
+            if self.device == "cuda":
+                inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                         for k, v in inputs.items()}
+                # Ensure dtype compatibility
+                if 'pixel_values' in inputs:
+                    model_dtype = next(self.model.parameters()).dtype
+                    inputs['pixel_values'] = inputs['pixel_values'].to(dtype=model_dtype)
+            
             with torch.no_grad():
+                # Very short generation for testing
+                self.model.generate(
+                    input_ids=inputs["input_ids"],
+                    pixel_values=inputs["pixel_values"],
+                    max_new_tokens=5
+                )
+            
+            logger.info("Test inference successful")
+            
+        except Exception as e:
+            logger.error(f"Test inference failed: {e}")
+            raise
+    
+    def analyze(self, image: Image.Image, detailed: bool = True) -> Dict[str, Any]:
+        """
+        Analyze image with automatic fallback to mock if needed
+        """
+        # Ensure model is loaded
+        self._ensure_initialized()
+        
+        if self.use_mock:
+            logger.info("Using mock analysis mode")
+            return self._mock_analyze(image)
+        
+        try:
+            # Try real analysis
+            return self._real_analyze(image, detailed)
+            
+        except Exception as e:
+            logger.error(f"Real analysis failed: {e}")
+            logger.info("Falling back to mock analysis")
+            self.use_mock = True
+            return self._mock_analyze(image)
+    
+    def _real_analyze(self, image: Image.Image, detailed: bool) -> Dict[str, Any]:
+        """Perform real Florence-2 analysis with timing"""
+        import time
+        start_time = time.time()
+        
+        analysis = {}
+        
+        # Basic image info
+        analysis['size'] = f"{image.width}x{image.height}"
+        analysis['mode'] = image.mode
+        analysis['analysis_mode'] = 'florence2'
+        
+        # Get detailed caption
+        caption_result = self._run_florence_task(image, "<DETAILED_CAPTION>")
+        if caption_result:
+            raw_description = caption_result.get('<DETAILED_CAPTION>', 'No description available')
+            analysis['description'] = self._clean_description(raw_description)
+        
+        # Get objects with bounding boxes
+        od_result = self._run_florence_task(image, "<OD>")
+        if od_result and '<OD>' in od_result:
+            objects_data = od_result['<OD>']
+            analysis['objects'] = self._process_objects(objects_data)
+        
+        # Analyze regions for composition
+        if detailed:
+            region_result = self._run_florence_task(image, "<DENSE_REGION_CAPTION>")
+            if region_result and '<DENSE_REGION_CAPTION>' in region_result:
+                analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
+        
+        # Extract style characteristics
+        analysis['style'] = self._extract_style_info(analysis.get('description', ''))
+        
+        # Environment info
+        analysis['environment'] = self._extract_environment_info(analysis.get('description', ''))
+        
+        # Add timing info
+        analysis['analysis_time'] = time.time() - start_time
+        logger.info(f"Analysis completed in {analysis['analysis_time']:.2f} seconds")
+        
+        return analysis
+    def _run_florence_task(self, image: Image.Image, task: str) -> Optional[Dict]:
+        """Run a specific Florence-2 task with proper error handling"""
+        try:
+            inputs = self.processor(text=task, images=image, return_tensors="pt")
+            
+            # Move to device and ensure dtype compatibility
+            if self.device == "cuda":
+                device_inputs = {}
+                model_dtype = next(self.model.parameters()).dtype
+                
+                for k, v in inputs.items():
+                    if isinstance(v, torch.Tensor):
+                        v = v.to(self.device)
+                        if k == 'pixel_values':
+                            v = v.to(dtype=model_dtype)
+                        device_inputs[k] = v
+                    else:
+                        device_inputs[k] = v
+                inputs = device_inputs
+            
+            with torch.no_grad():
+                # Улучшенные параметры генерации
                 generated_ids = self.model.generate(
                     input_ids=inputs["input_ids"],
                     pixel_values=inputs["pixel_values"],
-                    max_new_tokens=1024,
-                    num_beams=3,
-                    do_sample=False
+                    max_new_tokens=512,  # Уменьшено с 1024
+                    min_new_tokens=10,   # Минимум токенов
+                    do_sample=True,      # Включаем сэмплинг для разнообразия
+                    temperature=0.7,     # Контролируем креативность
+                    top_p=0.9,          # Nucleus sampling
+                    num_beams=3,        # Beam search
+                    repetition_penalty=1.2,  # Избегаем повторений
+                    length_penalty=1.0,      # Нейтральная длина
+                    early_stopping=True      # Остановка при достижении хорошего результата
                 )
             
-            # Decode
-            generated_text = self.processor.batch_decode(
-                generated_ids,
-                skip_special_tokens=False
-            )[0]
+            generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
             
-            # Post-process
-            parsed = self.processor.post_process_generation(
+            parsed_answer = self.processor.post_process_generation(
                 generated_text,
                 task=task,
                 image_size=(image.width, image.height)
             )
             
-            return parsed[task]
+            return parsed_answer
             
         except Exception as e:
-            logger.error(f"Error running task {task}: {e}")
+            logger.error(f"Error in Florence task {task}: {e}")
             return None
     
-    def _structure_results(self, raw_results: Dict, image: Image.Image) -> Dict[str, Any]:
-        """Convert Florence-2 results to structured format"""
-        structured = {
-            "size": raw_results.get("size", f"{image.width}x{image.height}"),
-            "aspect_ratio": raw_results.get("aspect_ratio", round(image.width / image.height, 2)),
-            "mode": raw_results.get("mode", image.mode),
-            "description": "",
-            "objects": {"main": [], "secondary": [], "count": {}},
-            "style": {"artistic": "unknown", "mood": "neutral", "color_palette": {"dominant": [], "temperature": "neutral"}},
-            "environment": {"setting": "unknown", "time_of_day": "unknown", "weather": "unknown", "season": "unknown"},
-            "lighting": {"primary_source": "unknown", "direction": "unknown", "intensity": "unknown", "shadows": "unknown", "contrast": "unknown"},
-            "composition": {"perspective": "unknown", "focal_point": "unknown", "depth_layers": [], "balance": "unknown"}
-        }
+    def _clean_description(self, description: str) -> str:
+        """Clean description from common artifacts"""
+        if not description:
+            return description
         
-        # Extract from CAPTION
-        if "<CAPTION>" in raw_results:
-            structured["description"] = raw_results["<CAPTION>"]
+        # Список фраз для удаления
+        artifacts_to_remove = [
+            "ready to be downloaded",
+            "download for free",
+            "free download",
+            "stock photo",
+            "watermark",
+            "shutterstock",
+            "getty images",
+            "©",
+            "copyright",
+            "all rights reserved",
+            "illustration of",
+            "photo of",
+            "image of",
+            "picture of",
+            "rendering of",
+            "3d render of",
+            "digital art of"
+        ]
         
-        # Extract from DETAILED_CAPTION
-        if "<DETAILED_CAPTION>" in raw_results:
-            detailed = raw_results["<DETAILED_CAPTION>"]
-            structured["description"] = detailed
-            
-            # Parse style hints
-            if "painting" in detailed.lower() or "artistic" in detailed.lower():
-                structured["style"]["artistic"] = "painterly"
-            elif "photo" in detailed.lower() or "realistic" in detailed.lower():
-                structured["style"]["artistic"] = "photorealistic"
-            
-            # Parse mood
-            mood_words = {
-                "bright": "bright", "dark": "moody", "colorful": "vibrant",
-                "serene": "calm", "dramatic": "dramatic"
-            }
-            for word, mood in mood_words.items():
-                if word in detailed.lower():
-                    structured["style"]["mood"] = mood
-                    break
+        # Очищаем описание
+        cleaned = description
+        for artifact in artifacts_to_remove:
+            # Регистронезависимая замена
+            import re
+            pattern = re.compile(re.escape(artifact), re.IGNORECASE)
+            cleaned = pattern.sub("", cleaned)
         
-        # Extract from OD (Object Detection)
-        if "<OD>" in raw_results:
-            od_result = raw_results["<OD>"]
-            if "bboxes" in od_result and "labels" in od_result:
-                labels = od_result["labels"]
-                
-                # Count objects
-                label_counts = {}
-                for label in labels:
-                    label_lower = label.lower()
-                    label_counts[label_lower] = label_counts.get(label_lower, 0) + 1
-                
-                structured["objects"]["count"] = label_counts
-                
-                # Separate main and secondary objects
-                # Main objects are those with larger bounding boxes or more instances
-                sorted_labels = sorted(set(labels), key=lambda x: label_counts.get(x.lower(), 0), reverse=True)
-                
-                if sorted_labels:
-                    structured["objects"]["main"] = sorted_labels[:3]
-                    structured["objects"]["secondary"] = sorted_labels[3:8]
+        # Убираем двойные пробелы и точки
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        cleaned = re.sub(r'\.+', '.', cleaned)
+        cleaned = cleaned.strip()
         
-        # Infer environment and lighting from description
-        if structured["description"]:
-            desc_lower = structured["description"].lower()
-            
-            # Environment
-            if any(word in desc_lower for word in ["indoor", "room", "interior"]):
-                structured["environment"]["setting"] = "indoor"
-            elif any(word in desc_lower for word in ["outdoor", "outside", "street", "nature"]):
-                structured["environment"]["setting"] = "outdoor"
-            
-            # Time of day
-            time_words = {
-                "morning": "morning", "sunrise": "morning",
-                "afternoon": "afternoon", "midday": "afternoon",
-                "evening": "evening", "sunset": "evening",
-                "night": "night", "dark": "night"
-            }
-            for word, time in time_words.items():
-                if word in desc_lower:
-                    structured["environment"]["time_of_day"] = time
-                    break
-            
-            # Weather
-            weather_words = {
-                "sunny": "sunny", "clear": "clear",
-                "cloudy": "cloudy", "overcast": "cloudy",
-                "rain": "rainy", "snow": "snowy"
-            }
-            for word, weather in weather_words.items():
-                if word in desc_lower:
-                    structured["environment"]["weather"] = weather
-                    break
+        # Если описание стало слишком коротким, возвращаем оригинал
+        if len(cleaned) < 10 and len(description) > 10:
+            return description
         
-        # Extract dominant colors from description
-        color_words = ["red", "blue", "green", "yellow", "orange", "purple", "pink", 
-                      "brown", "black", "white", "gray", "beige"]
-        found_colors = []
-        desc_lower = structured["description"].lower()
-        for color in color_words:
-            if color in desc_lower:
-                found_colors.append(color)
-        
-        if found_colors:
-            structured["style"]["color_palette"]["dominant"] = found_colors[:4]
-            
-            # Determine temperature
-            warm_colors = ["red", "orange", "yellow", "pink"]
-            cool_colors = ["blue", "green", "purple"]
-            warm_count = sum(1 for c in found_colors if c in warm_colors)
-            cool_count = sum(1 for c in found_colors if c in cool_colors)
-            
-            if warm_count > cool_count:
-                structured["style"]["color_palette"]["temperature"] = "warm"
-            elif cool_count > warm_count:
-                structured["style"]["color_palette"]["temperature"] = "cool"
-        
-        return structured
+        return cleaned
     
-    def _fallback_analysis(self, image: Image.Image) -> Dict[str, Any]:
-        """Fallback analysis when model is not available"""
-        return MockImageAnalyzer()._create_mock_analysis(image)
-
-
-class MockImageAnalyzer:
-    """Mock analyzer for testing and fallback"""
-    
-    def __init__(self):
-        self.initialized = False
-        self.model = None
-        logger.info("MockImageAnalyzer initialized")
-    
-    def analyze(self, image: Image.Image) -> Dict[str, Any]:
-        """Analyze image and return structured information"""
-        return self._create_mock_analysis(image)
-    
-    def _create_mock_analysis(self, image: Image.Image) -> Dict[str, Any]:
-        """Create mock analysis data"""
-        if image is None:
-            return self._get_empty_analysis()
+    def _process_objects(self, objects_data: Dict) -> Dict[str, List]:
+        """Process object detection results"""
+        if not objects_data or 'bboxes' not in objects_data:
+            return {'main': [], 'secondary': [], 'all': []}
         
-        # Get basic image info
-        width, height = image.size
-        aspect_ratio = width / height
+        labels = objects_data.get('labels', [])
         
-        # Mock analysis with realistic structure
-        analysis = {
-            "size": f"{width}x{height}",
-            "aspect_ratio": round(aspect_ratio, 2),
-            "mode": image.mode,
-            "description": "Mock analysis - Florence-2 integration available",
-            
-            "objects": {
-                "main": self._get_mock_main_objects(),
-                "secondary": self._get_mock_secondary_objects(),
-                "count": {
-                    "person": random.randint(0, 3),
-                    "vehicle": random.randint(0, 2),
-                    "animal": random.randint(0, 1),
-                    "furniture": random.randint(1, 4)
-                }
-            },
-            
-            "style": {
-                "artistic": random.choice(["photorealistic", "painterly", "sketch", "digital art"]),
-                "mood": random.choice(["bright", "moody", "neutral", "dramatic"]),
-                "color_palette": {
-                    "dominant": self._get_mock_colors(),
-                    "temperature": random.choice(["warm", "cool", "neutral"])
-                }
-            },
-            
-            "environment": {
-                "setting": random.choice(["indoor", "outdoor", "urban", "natural", "studio"]),
-                "time_of_day": random.choice(["morning", "afternoon", "evening", "night"]),
-                "weather": random.choice(["clear", "cloudy", "rainy", "foggy"]),
-                "season": random.choice(["spring", "summer", "fall", "winter"])
-            },
-            
-            "lighting": {
-                "primary_source": random.choice(["natural sunlight", "artificial", "mixed"]),
-                "direction": random.choice(["front", "side", "back", "top"]),
-                "intensity": random.choice(["bright", "moderate", "dim"]),
-                "shadows": random.choice(["soft", "hard", "minimal"]),
-                "contrast": random.choice(["high", "medium", "low"])
-            },
-            
-            "composition": {
-                "perspective": random.choice(["eye-level", "low-angle", "high-angle", "bird's-eye"]),
-                "focal_point": "center",
-                "depth_layers": ["foreground", "midground", "background"],
-                "balance": random.choice(["centered", "rule-of-thirds", "asymmetric"])
-            }
-        }
+        # Count occurrences
+        object_counts = {}
+        for label in labels:
+            object_counts[label] = object_counts.get(label, 0) + 1
         
-        return analysis
-    
-    def _get_empty_analysis(self) -> Dict[str, Any]:
-        """Return empty analysis structure"""
+        # Sort by frequency
+        sorted_objects = sorted(object_counts.items(), key=lambda x: x[1], reverse=True)
+        
+        # Categorize
+        main_objects = [obj[0] for obj in sorted_objects[:3]]
+        secondary_objects = [obj[0] for obj in sorted_objects[3:6]]
+        
         return {
-            "size": "0x0",
-            "aspect_ratio": 0,
-            "mode": "unknown",
-            "description": "No image provided",
-            "objects": {"main": [], "secondary": [], "count": {}},
-            "style": {"artistic": "unknown", "mood": "neutral", "color_palette": {"dominant": [], "temperature": "neutral"}},
-            "environment": {"setting": "unknown", "time_of_day": "unknown", "weather": "unknown", "season": "unknown"},
-            "lighting": {"primary_source": "unknown", "direction": "unknown", "intensity": "unknown", "shadows": "unknown", "contrast": "unknown"},
-            "composition": {"perspective": "unknown", "focal_point": "unknown", "depth_layers": [], "balance": "unknown"}
+            'main': main_objects,
+            'secondary': secondary_objects,
+            'all': labels,
+            'counts': object_counts
         }
     
-    def _get_mock_main_objects(self) -> list:
-        """Get mock main objects"""
-        possible_objects = [
-            "person", "car", "building", "tree", "dog", "cat",
-            "chair", "table", "laptop", "phone", "book", "cup"
-        ]
-        num_objects = random.randint(1, 3)
-        return random.sample(possible_objects, num_objects)
-    
-    def _get_mock_secondary_objects(self) -> list:
-        """Get mock secondary objects"""
-        possible_objects = [
-            "window", "door", "lamp", "plant", "picture frame",
-            "rug", "curtain", "shelf", "clock", "vase"
-        ]
-        num_objects = random.randint(2, 5)
-        return random.sample(possible_objects, num_objects)
-    
-    def _get_mock_colors(self) -> list:
-        """Get mock dominant colors"""
-        colors = [
-            "red", "blue", "green", "yellow", "orange", "purple",
-            "brown", "gray", "black", "white", "pink", "beige"
-        ]
-        num_colors = random.randint(2, 4)
-        return random.sample(colors, num_colors)
-    
-    def load_model(self, model_path: Optional[str] = None):
-        """Load model (placeholder for compatibility)"""
-        logger.info("Mock mode - no model to load")
-        self.initialized = True
-    
-    def unload_model(self):
-        """Unload model to free memory"""
-        logger.info("Mock mode - no model to unload")
-        self.initialized = False
-        self.model = None
-
-
-# Main ImageAnalyzer class that switches between implementations
-class ImageAnalyzer:
-    """Image analyzer with automatic Florence-2/mock switching"""
-    
-    def __init__(self):
-        self.initialized = False
-        self.use_florence2 = False
-        self.analyzer = None
+    def _extract_style_info(self, description: str) -> Dict[str, str]:
+        """Extract style information from description"""
+        style = {
+            'type': 'photographic',
+            'mood': 'neutral',
+            'lighting': 'natural',
+            'color_palette': 'varied'
+        }
         
-        # Determine which analyzer to use
-        if USE_FLORENCE2 == "false":
-            self.use_florence2 = False
-        elif USE_FLORENCE2 == "true" and TRANSFORMERS_AVAILABLE:
-            self.use_florence2 = True
-        elif USE_FLORENCE2 == "auto":
-            # Auto mode - use Florence-2 if available and system has enough resources
-            if TRANSFORMERS_AVAILABLE:
-                try:
-                    if torch.cuda.is_available():
-                        # Check VRAM
-                        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                        if vram_gb >= 4:  # Need at least 4GB for comfortable operation
-                            self.use_florence2 = True
-                            logger.info(f"Auto mode: Using Florence-2 (VRAM: {vram_gb:.1f}GB)")
-                        else:
-                            logger.info(f"Auto mode: Insufficient VRAM ({vram_gb:.1f}GB), using mock")
-                    else:
-                        logger.info("Auto mode: No CUDA available, using mock")
-                except:
-                    logger.info("Auto mode: Could not check VRAM, using mock")
+        desc_lower = description.lower()
         
-        # Initialize the appropriate analyzer
-        if self.use_florence2:
-            try:
-                self.analyzer = Florence2Analyzer()
-                logger.info("Using Florence-2 analyzer")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Florence-2: {e}")
-                self.use_florence2 = False
+        # Style detection
+        if any(word in desc_lower for word in ['painting', 'artistic', 'abstract', 'illustration']):
+            style['type'] = 'artistic'
+        elif any(word in desc_lower for word in ['cartoon', 'anime', 'animated']):
+            style['type'] = 'cartoon'
+        elif any(word in desc_lower for word in ['render', '3d', 'cgi']):
+            style['type'] = '3d_render'
         
-        if not self.use_florence2:
-            self.analyzer = MockImageAnalyzer()
-            logger.info("Using mock analyzer")
+        # Mood detection
+        if any(word in desc_lower for word in ['dark', 'moody', 'dramatic']):
+            style['mood'] = 'dramatic'
+        elif any(word in desc_lower for word in ['bright', 'cheerful', 'vibrant']):
+            style['mood'] = 'cheerful'
+        elif any(word in desc_lower for word in ['calm', 'serene', 'peaceful']):
+            style['mood'] = 'serene'
+        
+        # Lighting detection
+        if any(word in desc_lower for word in ['sunset', 'sunrise', 'golden']):
+            style['lighting'] = 'golden_hour'
+        elif any(word in desc_lower for word in ['night', 'dark', 'dim']):
+            style['lighting'] = 'low_light'
+        
+        return style
     
-    def analyze(self, image: Image.Image) -> Dict[str, Any]:
-        """Analyze image using the selected analyzer"""
-        if self.analyzer:
-            return self.analyzer.analyze(image)
+    def _extract_environment_info(self, description: str) -> Dict[str, str]:
+        """Extract environment information"""
+        env = {
+            'setting': 'unknown',
+            'time_of_day': 'unknown',
+            'weather': 'unknown'
+        }
+        
+        desc_lower = description.lower()
+        
+        # Setting detection
+        if any(word in desc_lower for word in ['indoor', 'room', 'interior']):
+            env['setting'] = 'indoor'
+        elif any(word in desc_lower for word in ['outdoor', 'outside', 'street', 'nature']):
+            env['setting'] = 'outdoor'
+        elif any(word in desc_lower for word in ['city', 'urban', 'building']):
+            env['setting'] = 'urban'
+        
+        # Time detection
+        if any(word in desc_lower for word in ['morning', 'dawn', 'sunrise']):
+            env['time_of_day'] = 'morning'
+        elif any(word in desc_lower for word in ['evening', 'dusk', 'sunset']):
+            env['time_of_day'] = 'evening'
+        elif any(word in desc_lower for word in ['night', 'dark']):
+            env['time_of_day'] = 'night'
+        elif any(word in desc_lower for word in ['day', 'afternoon', 'bright']):
+            env['time_of_day'] = 'day'
+        
+        return env
+    
+    def _mock_analyze(self, image: Image.Image) -> Dict[str, Any]:
+        """Enhanced mock analysis with more realistic data"""
+        # Generate pseudo-random but consistent results based on image
+        import hashlib
+        img_hash = hashlib.md5(image.tobytes()).hexdigest()
+        seed = int(img_hash[:8], 16)
+        
+        # Object lists for variety
+        object_pool = [
+            'person', 'car', 'building', 'tree', 'sky', 'road', 'chair', 
+            'table', 'window', 'door', 'plant', 'computer', 'book', 'phone',
+            'dog', 'cat', 'bird', 'flower', 'mountain', 'water', 'cloud'
+        ]
+        
+        # Style options
+        styles = ['photographic', 'artistic', 'cartoon', '3d_render', 'sketch']
+        moods = ['neutral', 'dramatic', 'cheerful', 'serene', 'mysterious']
+        
+        # Generate consistent objects based on seed
+        import random
+        random.seed(seed)
+        
+        num_objects = random.randint(3, 8)
+        selected_objects = random.sample(object_pool, min(num_objects, len(object_pool)))
+        
+        return {
+            'size': f"{image.width}x{image.height}",
+            'mode': image.mode,
+            'analysis_mode': 'mock',
+            'description': f'Mock analysis - A scene containing {", ".join(selected_objects[:3])} and other elements',
+            'objects': {
+                'main': selected_objects[:3],
+                'secondary': selected_objects[3:6] if len(selected_objects) > 3 else [],
+                'all': selected_objects,
+                'counts': {obj: random.randint(1, 3) for obj in selected_objects}
+            },
+            'style': {
+                'type': random.choice(styles),
+                'mood': random.choice(moods),
+                'lighting': random.choice(['natural', 'artificial', 'golden_hour', 'low_light']),
+                'color_palette': random.choice(['warm', 'cool', 'neutral', 'vibrant', 'muted'])
+            },
+            'environment': {
+                'setting': random.choice(['indoor', 'outdoor', 'urban', 'nature']),
+                'time_of_day': random.choice(['morning', 'day', 'evening', 'night']),
+                'weather': random.choice(['clear', 'cloudy', 'rainy', 'foggy'])
+            },
+            'composition': {
+                'aspect_ratio': round(image.width / image.height, 2),
+                'orientation': 'landscape' if image.width > image.height else 'portrait',
+                'complexity': random.choice(['simple', 'moderate', 'complex'])
+            }
+        }
+    
+    def set_mock_mode(self, enabled: bool):
+        """Manually enable/disable mock mode"""
+        self.force_mock = enabled
+        self.use_mock = enabled
+        if enabled:
+            logger.info("Mock mode manually enabled")
         else:
-            # Fallback
-            mock = MockImageAnalyzer()
-            return mock.analyze(image)
+            logger.info("Mock mode manually disabled")
+            self._initialized = False
+            self._init_attempted = False
+            self._init_error = None
     
-    def load_model(self, model_path: Optional[str] = None):
-        """Load model if using Florence-2"""
-        if self.analyzer and hasattr(self.analyzer, 'load_model'):
-            self.analyzer.load_model(model_path)
-        self.initialized = True
+    def get_status(self) -> Dict[str, Any]:
+        """Get current analyzer status"""
+        return {
+            'mode': 'mock' if self.use_mock else 'florence2',
+            'device': self.device,
+            'gpu_detected': self.detected_gpu,
+            'compatibility_mode': self.gpu_compatibility_mode,
+            'initialized': self._initialized,
+            'error': self._init_error
+        }
     
     def unload_model(self):
         """Unload model to free memory"""
-        if self.analyzer and hasattr(self.analyzer, 'unload_model'):
-            self.analyzer.unload_model()
-        self.initialized = False
+        if self.model is not None:
+            del self.model
+            self.model = None
+        if self.processor is not None:
+            del self.processor
+            self.processor = None
+        self._initialized = False
+        
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        logger.info("Model unloaded")
+
+
+# Backward compatibility
+ImageAnalyzer = SmartImageAnalyzer

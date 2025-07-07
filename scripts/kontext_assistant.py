@@ -8,14 +8,13 @@ import torch
 import logging
 from pathlib import Path
 import sys
+import time
 from typing import Optional, List, Dict, Any, Tuple
 from PIL import Image
 
 # Forge imports
 from modules import scripts, shared
 from modules.ui_components import InputAccordion
-
-# Compatibility imports handled in modules
 
 # Configure logging  
 logging.basicConfig(level=logging.INFO)
@@ -45,6 +44,10 @@ except ImportError as e:
 class KontextAssistant(scripts.Script):
     """Smart Assistant for FLUX.1 Kontext prompt generation"""
     
+    # Shared analyzer across instances to avoid reloading
+    _shared_analyzer = None
+    _analyzer_settings = None
+    
     def __init__(self):
         super().__init__()
         self.templates = None
@@ -53,6 +56,9 @@ class KontextAssistant(scripts.Script):
         self.initialized = False
         # Store references to kontext images UI components
         self.kontext_image_components = None
+        # Settings from UI
+        self.force_cpu = False
+        self.use_mock = False
         
     def title(self):
         return "Kontext Smart Assistant"
@@ -61,15 +67,38 @@ class KontextAssistant(scripts.Script):
         """Show in both txt2img and img2img tabs"""
         return scripts.AlwaysVisible
     
-    def _initialize_modules(self):
+    def _initialize_modules(self, force_cpu=False, use_mock=False):
         """Lazy initialization of modules"""
         if not self.initialized and MODULES_AVAILABLE:
             try:
                 self.templates = PromptTemplates()
                 self.generator = PromptGenerator(self.templates)
-                self.analyzer = ImageAnalyzer()
+                
+                # Check if we need to recreate analyzer due to settings change
+                current_settings = (force_cpu, use_mock)
+                if (KontextAssistant._shared_analyzer is None or 
+                    KontextAssistant._analyzer_settings != current_settings):
+                    
+                    logger.info(f"Creating analyzer with settings: force_cpu={force_cpu}, use_mock={use_mock}")
+                    
+                    # Create new analyzer with current settings
+                    if use_mock:
+                        KontextAssistant._shared_analyzer = ImageAnalyzer(force_mock=True)
+                    else:
+                        # For RTX 5090, try GPU first unless explicitly forced to CPU
+                        device = "cpu" if force_cpu else "cuda"
+                        KontextAssistant._shared_analyzer = ImageAnalyzer(
+                            device=device, 
+                            force_cpu=force_cpu,
+                            force_mock=False
+                        )
+                    
+                    KontextAssistant._analyzer_settings = current_settings
+                
+                self.analyzer = KontextAssistant._shared_analyzer
                 self.initialized = True
                 logger.info("Smart Assistant modules initialized")
+                
             except Exception as e:
                 logger.error(f"Failed to initialize modules: {e}")
                 self.initialized = False
@@ -104,8 +133,6 @@ class KontextAssistant(scripts.Script):
                 logger.info(f"[DEBUG] Arg {i}: {arg_type}")
         
         # Try to find kontext images in args
-        # Based on kontext.py structure: enabled, img1, img2, img3, sizing, reduce, metrics, dims_info
-        # So images should be at indices 1, 2, 3
         for i in range(len(args)):
             arg = args[i]
             # Check if this is a PIL Image
@@ -139,10 +166,19 @@ class KontextAssistant(scripts.Script):
         
         return kontext_images
     
-    def analyze_image(self, image_index: int, *args):
-        """Analyze a kontext image"""
+    def analyze_image(self, image_index: int, force_cpu: bool, use_mock: bool, 
+                     progress=gradio.Progress(), *args):
+        """Analyze a kontext image with timing"""
         try:
+            start_time = time.time()
             logger.info(f"[DEBUG] analyze_image called for index {image_index}")
+            
+            # Update settings
+            self.force_cpu = force_cpu
+            self.use_mock = use_mock
+            
+            # Reinitialize if needed
+            self._initialize_modules(force_cpu=force_cpu, use_mock=use_mock)
             
             # Get kontext images from UI args
             kontext_images = self._get_kontext_images_from_ui(*args)
@@ -156,9 +192,28 @@ class KontextAssistant(scripts.Script):
             
             logger.info(f"[DEBUG] Found image for analysis: {image.size}")
             
+            # Define progress callback for model loading
+            def progress_callback(message, value):
+                if hasattr(progress, '__call__'):
+                    progress(value, desc=message)
+            
+            # Show loading message first
+            if hasattr(progress, '__call__'):
+                progress(0, desc=f"Starting analysis of image {image_index + 1}...")
+            
             # Analyze with our analyzer
             if self.analyzer and hasattr(self.analyzer, 'analyze'):
+                # Ensure model is loaded with progress
+                if hasattr(self.analyzer, '_ensure_initialized'):
+                    self.analyzer._ensure_initialized(progress_callback)
+                
+                if hasattr(progress, '__call__'):
+                    progress(0.7, desc="Analyzing image content...")
+                
                 analysis = self.analyzer.analyze(image)
+                
+                if hasattr(progress, '__call__'):
+                    progress(1.0, desc="Analysis complete!")
             else:
                 # Fallback analysis
                 analysis = {
@@ -167,34 +222,71 @@ class KontextAssistant(scripts.Script):
                     "description": "Basic analysis (Florence-2 not loaded)"
                 }
             
-            # Format output - with proper type checking
+            # Calculate analysis time
+            analysis_time = time.time() - start_time
+            
+            # Format output with comprehensive results
             output = f"✅ Image {image_index + 1}: {analysis.get('size', 'Unknown size')}\n"
+            output += f"⏱️ Analysis time: {analysis_time:.2f} seconds\n"
             
+            # Add analysis mode info
+            mode = analysis.get('analysis_mode', 'unknown')
+            device = "CPU" if self.force_cpu else "GPU"
+            output += f"🔧 Mode: {mode} ({device})\n"
+            
+            # Description
             if 'description' in analysis:
-                output += f"Content: {analysis['description']}"
+                output += f"\n📝 Description: {analysis['description']}\n"
             
-            # Safe handling of objects
+            # Objects detection
             if 'objects' in analysis:
                 objects = analysis['objects']
-                if isinstance(objects, list):
-                    # If it's a list, join first 5 items
-                    output += f"\nObjects: {', '.join(str(obj) for obj in objects[:5])}"
-                elif isinstance(objects, str):
-                    # If it's a string, use it directly
-                    output += f"\nObjects: {objects}"
+                if isinstance(objects, dict):
+                    # Structured object data
+                    main_objs = objects.get('main', [])
+                    if main_objs:
+                        output += f"\n🎯 Main objects: {', '.join(main_objs)}"
+                    
+                    all_objs = objects.get('all', [])
+                    if all_objs and len(all_objs) > len(main_objs):
+                        secondary = [obj for obj in all_objs if obj not in main_objs][:5]
+                        if secondary:
+                            output += f"\n📦 Also contains: {', '.join(secondary)}"
+                elif isinstance(objects, list):
+                    # Simple list format
+                    output += f"\n🎯 Objects: {', '.join(str(obj) for obj in objects[:5])}"
                 else:
-                    # For any other type, convert to string
-                    output += f"\nObjects: {str(objects)}"
+                    # Fallback
+                    output += f"\n🎯 Objects: {str(objects)}"
             
-            if 'style' in analysis:
-                output += f"\nStyle: {analysis['style']}"
+            # Style information
+            if 'style' in analysis and isinstance(analysis['style'], dict):
+                style_info = analysis['style']
+                output += f"\n🎨 Style: {style_info.get('type', 'unknown')}"
+                if 'color_palette' in style_info:
+                    colors = style_info['color_palette']
+                    if isinstance(colors, list) and colors:
+                        output += f" | Colors: {', '.join(colors[:3])}"
             
-            logger.info(f"[DEBUG] Analysis complete for image {image_index + 1}")
+            # Environment information
+            if 'environment' in analysis and isinstance(analysis['environment'], dict):
+                env_info = analysis['environment']
+                output += f"\n🌍 Environment: {env_info.get('setting', 'unknown')}"
+                if 'lighting' in env_info:
+                    output += f" | Lighting: {env_info['lighting']}"
+            
+            # Text detection
+            if 'text' in analysis and analysis['text']:
+                output += f"\n📄 Text detected: {analysis['text'][:50]}..."
+            
+            logger.info(f"[DEBUG] Analysis complete for image {image_index + 1} in {analysis_time:.2f}s")
             return output, analysis
             
         except Exception as e:
-            logger.error(f"Error analyzing image {image_index + 1}: {e}", exc_info=True)
-            return f"❌ Error: {str(e)[:100]}", {}
+            logger.error(f"Error analyzing image {image_index + 1}: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"❌ Error: {str(e)}", {}
     
     def ui(self, is_img2img):
         """Create Smart Assistant UI"""
@@ -213,11 +305,27 @@ class KontextAssistant(scripts.Script):
                 """)
             return []
         
-        # Initialize modules on first UI creation
-        self._initialize_modules()
+        # Initialize modules on first UI creation with default settings
+        self._initialize_modules(force_cpu=False, use_mock=False)
         
         with InputAccordion(False, label="🤖 " + self.title()) as enabled:
             gradio.Markdown("💡 Analyzes context images and generates optimal FLUX.1 Kontext prompts")
+            
+            # Performance settings
+            with gradio.Row():
+                with gradio.Column():
+                    gradio.Markdown("### ⚙️ Performance Settings")
+                    with gradio.Row():
+                        force_cpu = gradio.Checkbox(
+                            label="Force CPU mode",
+                            value=False,
+                            info="Use CPU instead of GPU (slower but more compatible)"
+                        )
+                        use_mock = gradio.Checkbox(
+                            label="Use mock analysis",
+                            value=False,
+                            info="Use fast mock analysis instead of Florence-2"
+                        )
             
             # Image analysis section
             gradio.Markdown("### 📸 Context Image Analysis")
@@ -238,7 +346,7 @@ class KontextAssistant(scripts.Script):
                             value="",
                             label=f"Analysis {i+1}",
                             interactive=False,
-                            lines=2,
+                            lines=3,
                             placeholder="Click analyze to scan kontext image..."
                         )
                 
@@ -356,8 +464,8 @@ class KontextAssistant(scripts.Script):
             # Connect analyze buttons
             for i, (btn, display) in enumerate(analysis_displays):
                 btn.click(
-                    fn=lambda *args, idx=i: self.analyze_image(idx, *args),
-                    inputs=[],  # Will receive args from Forge
+                    fn=lambda *args, idx=i: self.analyze_image(idx, force_cpu, use_mock, *args),
+                    inputs=[force_cpu, use_mock],  # Pass settings
                     outputs=[display, analysis_data[i]]
                 )
             
@@ -376,10 +484,10 @@ class KontextAssistant(scripts.Script):
         
         # Return UI components for Forge
         return [enabled, task_type, user_intent, generated_prompt, 
-                preservation_strength, use_analysis, show_debug]
+                preservation_strength, use_analysis, show_debug, force_cpu, use_mock]
     
     def process(self, p, enabled, task_type, user_intent, generated_prompt,
-                preservation_strength, use_analysis, show_debug):
+                preservation_strength, use_analysis, show_debug, force_cpu, use_mock):
         """Process - we don't modify the generation, just provide UI"""
         if not enabled:
             return
