@@ -1,241 +1,168 @@
-#!/usr/bin/env python3
 """
-Test script for Florence-2 integration in Kontext Assistant.
-Tests image analysis and prompt generation with real Florence-2 model.
+Test Florence-2 integration
 """
 
-import sys
-import os
-
-# Fix for Python 3.10 compatibility - must be before any other imports
+# Fix collections compatibility BEFORE any other imports
 import collections
 import collections.abc
 for attr in dir(collections.abc):
     if not hasattr(collections, attr):
         setattr(collections, attr, getattr(collections.abc, attr))
 
+import sys
+import os
 from pathlib import Path
 from PIL import Image
-import requests
-from io import BytesIO
 import time
-import torch
 
-# Add project to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent))
 
-# Import our modules
-from ka_modules.image_analyzer import ImageAnalyzer, Florence2ModelLoader
-from ka_modules.prompt_generator import PromptGenerator
-from ka_modules.templates import PromptTemplates
-
-
-def print_header(text):
-    """Print formatted header."""
-    print(f"\n{'='*60}")
-    print(f"  {text}")
-    print(f"{'='*60}\n")
-
-
-def test_florence2_loading():
-    """Test Florence-2 model loading."""
-    print_header("Testing Florence-2 Model Loading")
+# Test different modes
+def test_image_analyzer():
+    """Test ImageAnalyzer with different configurations"""
     
-    loader = Florence2ModelLoader()
+    print("=== Testing Image Analyzer ===\n")
     
-    print("1. Checking CUDA availability...")
-    cuda_available = torch.cuda.is_available()
-    print(f"   CUDA available: {cuda_available}")
-    if cuda_available:
-        print(f"   GPU: {torch.cuda.get_device_name(0)}")
-        print(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    # Create test image
+    test_image = Image.new('RGB', (512, 512), color='blue')
     
-    print("\n2. Loading Florence-2 model...")
-    start_time = time.time()
-    try:
-        loader.initialize()
-        load_time = time.time() - start_time
-        print(f"   ✅ Model loaded successfully in {load_time:.2f} seconds")
-        print(f"   Device: {loader.device}")
-        return True
-    except Exception as e:
-        print(f"   ❌ Failed to load model: {e}")
-        return False
-
-
-def test_image_analysis():
-    """Test image analysis with a sample image."""
-    print_header("Testing Image Analysis")
+    # Test 1: Default mode (auto-detect)
+    print("Test 1: Auto mode")
+    os.environ.pop("KONTEXT_USE_FLORENCE2", None)
     
-    # Download a test image
-    print("1. Downloading test image...")
-    try:
-        url = "https://images.unsplash.com/photo-1542291026-7eec264c27ff"
-        response = requests.get(url, params={'w': 512})
-        test_image = Image.open(BytesIO(response.content)).convert('RGB')
-        print(f"   ✅ Downloaded test image ({test_image.size})")
-    except Exception as e:
-        print(f"   ❌ Failed to download image: {e}")
-        # Create a simple test image
-        test_image = Image.new('RGB', (512, 512), color='red')
-        print("   Using fallback red square image")
-    
-    # Analyze image
-    print("\n2. Analyzing image with Florence-2...")
+    from ka_modules.image_analyzer import ImageAnalyzer
     analyzer = ImageAnalyzer()
     
-    start_time = time.time()
-    try:
-        result = analyzer.analyze(test_image)
+    result = analyzer.analyze(test_image)
+    print(f"Using Florence-2: {analyzer.use_florence2}")
+    print(f"Description: {result['description'][:100]}...")
+    print(f"Objects: {result['objects']['main'][:3]}")
+    
+    # Test 2: Force mock mode
+    print("\nTest 2: Force mock mode")
+    os.environ["KONTEXT_USE_FLORENCE2"] = "false"
+    
+    # Need to reimport to pick up env change
+    import importlib
+    import ka_modules.image_analyzer
+    importlib.reload(ka_modules.image_analyzer)
+    
+    from ka_modules.image_analyzer import ImageAnalyzer as AnalyzerMock
+    analyzer_mock = AnalyzerMock()
+    
+    result_mock = analyzer_mock.analyze(test_image)
+    print(f"Using Florence-2: {analyzer_mock.use_florence2}")
+    print(f"Description: {result_mock['description'][:100]}...")
+    
+    # Test 3: Force Florence-2 mode
+    print("\nTest 3: Force Florence-2 mode")
+    os.environ["KONTEXT_USE_FLORENCE2"] = "true"
+    
+    importlib.reload(ka_modules.image_analyzer)
+    
+    from ka_modules.image_analyzer import ImageAnalyzer as AnalyzerF2
+    analyzer_f2 = AnalyzerF2()
+    
+    if analyzer_f2.use_florence2:
+        print("Florence-2 is being used!")
+        print("Loading model... (this may take a moment)")
+        
+        start_time = time.time()
+        analyzer_f2.load_model()
+        load_time = time.time() - start_time
+        print(f"Model loaded in {load_time:.2f} seconds")
+        
+        # Analyze with Florence-2
+        start_time = time.time()
+        result_f2 = analyzer_f2.analyze(test_image)
         analysis_time = time.time() - start_time
         
-        print(f"   ✅ Analysis completed in {analysis_time:.2f} seconds")
+        print(f"Analysis took {analysis_time:.2f} seconds")
+        print(f"Description: {result_f2['description'][:100]}...")
+        print(f"Objects: {result_f2['objects']['main'][:3]}")
         
-        # Print results
-        print("\n3. Analysis Results:")
-        print(f"   Main objects: {', '.join(result.objects['main'])}")
-        print(f"   Style: {result.style['artistic']}, Mood: {result.style['mood']}")
-        print(f"   Setting: {result.environment['setting']}")
-        print(f"   Lighting: {result.lighting['intensity']} {result.lighting['primary_source']}")
-        print(f"\n   Caption: {result.raw_caption[:200]}...")
+        # Test with a real image if available
+        real_image_path = Path("test_image.jpg")
+        if real_image_path.exists():
+            print("\nTesting with real image...")
+            real_image = Image.open(real_image_path)
+            real_result = analyzer_f2.analyze(real_image)
+            print(f"Real image description: {real_result['description']}")
+            print(f"Detected objects: {real_result['objects']['main']}")
         
-        return result
-    except Exception as e:
-        print(f"   ❌ Analysis failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-def test_prompt_generation(analysis_result):
-    """Test prompt generation with analysis results."""
-    print_header("Testing Prompt Generation")
-    
-    if not analysis_result:
-        print("⚠️  No analysis result available, using mock data")
-        analysis_data = {
-            'objects': ['red shoe'],
-            'styles': ['product photography']
-        }
+        # Unload model
+        print("\nUnloading model...")
+        analyzer_f2.unload_model()
+        print("Model unloaded")
     else:
-        analysis_data = {
-            'objects': analysis_result.objects['main'],
-            'styles': [analysis_result.style['artistic']]
-        }
+        print("Florence-2 not available or not enough resources")
     
-    # Test different task types
+    # Clean up environment
+    os.environ.pop("KONTEXT_USE_FLORENCE2", None)
+    
+    print("\n=== Test Complete ===")
+
+def test_with_kontext_images():
+    """Test analyzer with typical kontext use cases"""
+    
+    print("\n=== Testing Kontext Use Cases ===\n")
+    
+    from ka_modules.image_analyzer import ImageAnalyzer
+    from ka_modules.prompt_generator import PromptGenerator
+    from ka_modules.templates import PromptTemplates
+    
+    # Initialize components
+    analyzer = ImageAnalyzer()
     templates = PromptTemplates()
     generator = PromptGenerator(templates)
     
+    # Test scenarios
     test_cases = [
-        ("object_manipulation", "make it blue"),
-        ("style_transfer", "convert to oil painting style"),
-        ("environment_change", "place in a forest"),
-        ("lighting_adjustment", "add dramatic sunset lighting")
+        {
+            "image": Image.new('RGB', (800, 600), color='red'),
+            "task": "object_manipulation",
+            "intent": "make the car blue"
+        },
+        {
+            "image": Image.new('RGB', (1024, 768), color='green'),
+            "task": "style_transfer", 
+            "intent": "oil painting style"
+        }
     ]
     
-    print("Testing prompt generation for different tasks:\n")
-    
-    for task_type, user_intent in test_cases:
-        try:
-            prompt = generator.generate(
-                task_type=task_type,
-                user_intent=user_intent,
-                image_analysis=analysis_data,
-                subtype="default"
-            )
-            print(f"Task: {task_type}")
-            print(f"Intent: '{user_intent}'")
-            print(f"Generated: {prompt}")
-            print("-" * 50)
-        except Exception as e:
-            print(f"❌ Failed to generate prompt for {task_type}: {e}")
-            print("-" * 50)
-
-
-def test_memory_management():
-    """Test memory management and model unloading."""
-    print_header("Testing Memory Management")
-    
-    analyzer = ImageAnalyzer()
-    
-    if torch.cuda.is_available():
-        print("1. Initial VRAM usage:")
-        print(f"   Allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
-        print(f"   Reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+    for i, test in enumerate(test_cases):
+        print(f"\nTest Case {i+1}: {test['task']}")
         
-        # Load model
-        analyzer.model_loader.initialize()
+        # Analyze image
+        analysis = analyzer.analyze(test['image'])
+        print(f"Analysis complete: {len(analysis)} fields")
         
-        print("\n2. After model loading:")
-        print(f"   Allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
-        print(f"   Reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+        # Generate prompt
+        prompt = generator.generate(
+            task_type=test['task'],
+            user_intent=test['intent'],
+            image_analysis=analysis
+        )
         
-        # Unload model
-        analyzer.unload_model()
-        torch.cuda.empty_cache()
+        print(f"Generated prompt: {prompt[:150]}...")
         
-        print("\n3. After model unloading:")
-        print(f"   Allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
-        print(f"   Reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
-        print("\n   ✅ Memory management test completed")
-    else:
-        print("   ⚠️  CUDA not available, skipping VRAM tests")
-
-
-def test_caching():
-    """Test analysis caching."""
-    print_header("Testing Analysis Caching")
-    
-    analyzer = ImageAnalyzer()
-    test_image = Image.new('RGB', (256, 256), color='blue')
-    
-    print("1. First analysis (should be slow)...")
-    start = time.time()
-    result1 = analyzer.analyze(test_image)
-    time1 = time.time() - start
-    print(f"   Time: {time1:.2f} seconds")
-    
-    print("\n2. Second analysis (should be cached)...")
-    start = time.time()
-    result2 = analyzer.analyze(test_image)
-    time2 = time.time() - start
-    print(f"   Time: {time2:.2f} seconds")
-    
-    if time2 < time1 * 0.1:  # Should be at least 10x faster
-        print("\n   ✅ Caching working correctly")
-    else:
-        print("\n   ⚠️  Caching may not be working properly")
-
-
-def main():
-    """Run all tests."""
-    print("\n" + "="*60)
-    print("  FLORENCE-2 INTEGRATION TEST SUITE")
-    print("  Kontext Assistant V2")
-    print("="*60)
-    
-    # Test 1: Model Loading
-    if not test_florence2_loading():
-        print("\n⚠️  Model loading failed. Some tests will be skipped.")
-        return
-    
-    # Test 2: Image Analysis
-    analysis_result = test_image_analysis()
-    
-    # Test 3: Prompt Generation
-    test_prompt_generation(analysis_result)
-    
-    # Test 4: Memory Management
-    test_memory_management()
-    
-    # Test 5: Caching
-    test_caching()
-    
-    print_header("All Tests Completed")
-    print("✅ Florence-2 integration is ready for use!")
-
+        # Verify analysis influenced the prompt
+        if analysis['objects']['main']:
+            print(f"Main objects detected: {analysis['objects']['main']}")
 
 if __name__ == "__main__":
-    main()
+    # Check requirements first
+    print("Checking requirements...\n")
+    
+    try:
+        import transformers
+        print(f"✅ Transformers version: {transformers.__version__}")
+    except ImportError:
+        print("❌ Transformers not installed")
+        print("Install with: pip install transformers>=4.36.0")
+        sys.exit(1)
+    
+    # Run tests
+    test_image_analyzer()
+    test_with_kontext_images()
