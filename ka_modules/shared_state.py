@@ -36,12 +36,25 @@ class KontextSharedState:
         logger.info("KontextSharedState initialized")
     
     def set_images(self, images: List[Optional[Image.Image]]) -> None:
-        """Set kontext images thread-safely"""
+        """Set kontext images thread-safely with validation"""
         with self._image_lock:
+            # Validate images
+            validated_images = []
+            for i, img in enumerate(images[:3]):
+                if img is not None:
+                    if not isinstance(img, Image.Image):
+                        logger.warning(f"Invalid image type at index {i}: {type(img)}")
+                        validated_images.append(None)
+                    else:
+                        validated_images.append(img)
+                else:
+                    validated_images.append(None)
+            
             # Ensure we have exactly 3 slots
-            self._kontext_images = list(images[:3])
-            while len(self._kontext_images) < 3:
-                self._kontext_images.append(None)
+            while len(validated_images) < 3:
+                validated_images.append(None)
+            
+            self._kontext_images = validated_images
             
             import time
             self._last_update_time = time.time()

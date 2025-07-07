@@ -6,11 +6,7 @@ Currently not implemented - reserved for V2 future updates.
 import logging
 from typing import Optional, Dict, Any
 
-# Compatibility
-try:
-    from collections.abc import Mapping
-except ImportError:
-    from collections import Mapping
+# Module imports
 
 logger = logging.getLogger("KontextAssistant.LLMEnhancer")
 

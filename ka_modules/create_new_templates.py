@@ -10,7 +10,7 @@ from datetime import datetime
 def main():
     print("🔧 Creating fresh templates.py\n")
     
-    root = Path.cwd()
+    root = Path(__file__).parent.parent
     templates_path = root / 'ka_modules' / 'templates.py'
     
     # Backup existing if needed

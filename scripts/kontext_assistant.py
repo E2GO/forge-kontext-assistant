@@ -15,11 +15,7 @@ from PIL import Image
 from modules import scripts, shared
 from modules.ui_components import InputAccordion
 
-# Fix for Python 3.10 collections
-try:
-    from collections.abc import Mapping
-except ImportError:
-    from collections import Mapping
+# Compatibility imports handled in modules
 
 # Configure logging  
 logging.basicConfig(level=logging.INFO)
@@ -29,10 +25,9 @@ logger = logging.getLogger("KontextAssistant")
 script_dir = Path(__file__).parent
 extension_root = script_dir.parent
 
-# Add paths for imports
-for path in [extension_root, script_dir]:
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+# Add paths for imports safely
+if extension_root.exists() and str(extension_root) not in sys.path:
+    sys.path.insert(0, str(extension_root))
 
 # Import our modules
 try:
@@ -198,10 +193,8 @@ class KontextAssistant(scripts.Script):
             return output, analysis
             
         except Exception as e:
-            logger.error(f"Error analyzing image {image_index + 1}: {e}")
-            import traceback
-            traceback.print_exc()
-            return f"❌ Error: {str(e)}", {}
+            logger.error(f"Error analyzing image {image_index + 1}: {e}", exc_info=True)
+            return f"❌ Error: {str(e)[:100]}", {}
     
     def ui(self, is_img2img):
         """Create Smart Assistant UI"""
@@ -395,7 +388,7 @@ class KontextAssistant(scripts.Script):
         if show_debug and generated_prompt:
             logger.info(f"Smart Assistant used - Task: {task_type}, Generated: {generated_prompt[:50]}...")
     
-    def process_before_every_sampling(self, p, *args):
+    def process_before_every_sampling(self, p, *args, **kwargs):
         """Hook to get access to all script args including kontext images"""
         # This method will receive all args from all scripts
         # We can use it to find kontext images

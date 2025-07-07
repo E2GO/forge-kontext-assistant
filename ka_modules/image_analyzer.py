@@ -38,12 +38,14 @@ class Florence2Analyzer:
     """Real Florence-2 based image analyzer"""
     
     def __init__(self, device: Optional[str] = None, load_in_8bit: bool = False):
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device(device if device else ('cuda' if torch.cuda.is_available() else 'cpu'))
         self.load_in_8bit = load_in_8bit
         self.model = None
         self.processor = None
         self.model_id = "microsoft/Florence-2-large"
         self.initialized = False
+        self._cache = {}  # Simple results cache
+        self._cache_size = 10  # Maximum cache size
         
         logger.info(f"Florence2Analyzer initialized for device: {self.device}")
     
@@ -112,6 +114,9 @@ class Florence2Analyzer:
         """Unload model to free memory"""
         if self.model is not None:
             logger.info("Unloading Florence-2 model")
+            # Move to CPU before deletion to free GPU memory
+            if str(self.device) == "cuda":
+                self.model.cpu()
             del self.model
             self.model = None
         
@@ -125,6 +130,7 @@ class Florence2Analyzer:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            torch.cuda.synchronize()
             
         logger.info("Model unloaded and memory cleared")
     

@@ -214,10 +214,18 @@ class PromptGenerator:
         return params
     
     def _fill_template(self, template: str, params: Dict[str, str]) -> str:
-        """Fill template with parameters"""
+        """Fill template with parameters safely"""
         prompt = template
         for key, value in params.items():
-            prompt = prompt.replace(f"{{{key}}}", value)
+            if value is None:
+                value = f"[{key}]"  # Placeholder for missing values
+            prompt = prompt.replace(f"{{{key}}}", str(value))
+        
+        # Check for unfilled placeholders
+        unfilled = re.findall(r'\{(\w+)\}', prompt)
+        if unfilled:
+            logger.warning(f"Unfilled template parameters: {unfilled}")
+        
         return prompt
     
     def _enhance_with_analysis(self, prompt: str, analysis: Dict[str, Any], task_type: str) -> str:
@@ -248,8 +256,8 @@ class PromptGenerator:
     # Extraction helper methods
     def _extract_object(self, intent: str, analysis: Optional[Dict]) -> str:
         """Extract object from intent or analysis"""
-        # Skip "it" and "look" as objects
-        skip_words = ["it", "them", "this", "that", "look", "make"]
+        # Skip common non-object words
+        skip_words = {"it", "them", "this", "that", "look", "the", "a", "an"}
         
         # Common objects to look for
         object_words = ["car", "person", "building", "tree", "sky", "road", "house", "dog", "cat", "chair", "table", "flower", "mountain", "water"]
@@ -269,8 +277,10 @@ class PromptGenerator:
         
         for pattern in patterns:
             match = pattern.search(intent)
-            if match and match.group(1).lower() not in skip_words:
-                return match.group(1)
+            if match:
+                word = match.group(1).lower()
+                if word not in skip_words and len(word) > 2:
+                    return word
         
         # For state changes, if no object found, look at analysis
         if analysis and "objects" in analysis:

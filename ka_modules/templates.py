@@ -95,7 +95,12 @@ class PromptTemplates:
         return default_configs
     
     def get_template(self, task_type: str, subtype: Optional[str] = None) -> str:
-        """Get template for specific task"""
+        """Get template for specific task with validation"""
+        # Validate task_type
+        if task_type not in self.task_configs:
+            logger.warning(f"Unknown task type: {task_type}, using default")
+            task_type = "object_manipulation"
+        
         # Map task types to template keys
         template_map = {
             "object_manipulation": {

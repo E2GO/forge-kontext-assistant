@@ -16,6 +16,7 @@ from modules.sd_samplers_common import images_tensor_to_samples, approximation_i
 from backend.misc.image_resize import adaptive_resize
 from backend.nn.flux import IntegratedFluxTransformer2DModel
 from einops import rearrange, repeat
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -372,6 +373,7 @@ class ForgeKontext(scripts.Script):
     
     # Add image sharing functionality
     _current_kontext_images: List[Optional[Image.Image]] = [None, None, None]
+    _images_lock = threading.Lock()
     
     def __init__(self):
         super().__init__()
@@ -399,8 +401,9 @@ class ForgeKontext(scripts.Script):
     @classmethod  
     def set_kontext_images(cls, images: List[Optional[Image.Image]]) -> None:
         """Store kontext images for access by other extensions"""
-        cls._current_kontext_images = images.copy() if images else [None, None, None]
-        logger.debug(f"Stored {sum(1 for img in images if img is not None)} kontext images for sharing")
+        with cls._images_lock:
+            cls._current_kontext_images = images.copy() if images else [None, None, None]
+            logger.debug(f"Stored {sum(1 for img in images if img is not None)} kontext images for sharing")
     
     def title(self) -> str:
         return "Forge FluxKontext Pro"
