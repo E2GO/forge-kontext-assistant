@@ -238,8 +238,35 @@ class KontextAssistant(scripts.Script):
             if 'description' in analysis:
                 output += f"\n📝 Description: {analysis['description']}\n"
             
-            # Objects detection
-            if 'objects' in analysis:
+            # Objects detection - Enhanced version
+            if 'objects_detailed' in analysis:
+                detailed = analysis['objects_detailed']
+                
+                # Main objects
+                if detailed.get('main'):
+                    output += f"\n🎯 Main objects: {', '.join(detailed['main'])}"
+                
+                # Clothing
+                if detailed.get('clothing'):
+                    output += f"\n👔 Clothing: {', '.join(detailed['clothing'])}"
+                
+                # Accessories
+                if detailed.get('accessories'):
+                    output += f"\n🎒 Accessories: {', '.join(detailed['accessories'])}"
+                
+                # Props
+                if detailed.get('props'):
+                    output += f"\n🎭 Props: {', '.join(detailed['props'])}"
+                
+                # Background elements
+                if detailed.get('background'):
+                    output += f"\n🏛️ Background: {', '.join(detailed['background'][:3])}"
+                
+                # Architecture
+                if detailed.get('architecture'):
+                    output += f"\n🏰 Architecture: {', '.join(detailed['architecture'][:3])}"
+            elif 'objects' in analysis:
+                # Fallback to simple objects
                 objects = analysis['objects']
                 if isinstance(objects, dict):
                     # Structured object data
@@ -272,8 +299,14 @@ class KontextAssistant(scripts.Script):
             if 'environment' in analysis and isinstance(analysis['environment'], dict):
                 env_info = analysis['environment']
                 output += f"\n🌍 Environment: {env_info.get('setting', 'unknown')}"
-                if 'lighting' in env_info:
-                    output += f" | Lighting: {env_info['lighting']}"
+                
+                # Additional environment details
+                if env_info.get('lighting_quality') != 'unknown':
+                    output += f"\n💡 Lighting: {env_info['lighting_quality']}"
+                if env_info.get('atmosphere') != 'unknown':
+                    output += f" | Atmosphere: {env_info['atmosphere']}"
+                if env_info.get('time_of_day') != 'unknown':
+                    output += f" | Time: {env_info['time_of_day']}"
             
             # Text detection
             if 'text' in analysis and analysis['text']:

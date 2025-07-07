@@ -232,11 +232,27 @@ class SmartImageAnalyzer:
             if region_result and '<DENSE_REGION_CAPTION>' in region_result:
                 analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
         
+        # Get detailed objects analysis
+        detailed_objects = self._extract_detailed_objects(
+            analysis.get('description', ''), 
+            objects_data if 'od_result' in locals() and od_result else {}
+        )
+        
+        # Update objects with detailed categories
+        if detailed_objects:
+            analysis['objects_detailed'] = detailed_objects
+            # Keep backward compatibility
+            if not analysis.get('objects'):
+                analysis['objects'] = {
+                    'main': detailed_objects.get('main', []),
+                    'all': detailed_objects.get('main', [])
+                }
+        
         # Extract style characteristics
         analysis['style'] = self._extract_style_info(analysis.get('description', ''))
         
         # Environment info
-        analysis['environment'] = self._extract_environment_info(analysis.get('description', ''))
+        analysis['environment'] = self._extract_enhanced_environment(analysis.get('description', ''), analysis.get('regions'))
         
         # Add timing info
         analysis['analysis_time'] = time.time() - start_time
@@ -323,11 +339,27 @@ class SmartImageAnalyzer:
             if region_result and '<DENSE_REGION_CAPTION>' in region_result:
                 analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
         
+        # Get detailed objects analysis
+        detailed_objects = self._extract_detailed_objects(
+            analysis.get('description', ''), 
+            objects_data if 'od_result' in locals() and od_result else {}
+        )
+        
+        # Update objects with detailed categories
+        if detailed_objects:
+            analysis['objects_detailed'] = detailed_objects
+            # Keep backward compatibility
+            if not analysis.get('objects'):
+                analysis['objects'] = {
+                    'main': detailed_objects.get('main', []),
+                    'all': detailed_objects.get('main', [])
+                }
+        
         # Extract style characteristics
         analysis['style'] = self._extract_style_info(analysis.get('description', ''))
         
         # Environment info
-        analysis['environment'] = self._extract_environment_info(analysis.get('description', ''))
+        analysis['environment'] = self._extract_enhanced_environment(analysis.get('description', ''), analysis.get('regions'))
         
         # Add timing info
         analysis['analysis_time'] = time.time() - start_time
@@ -454,6 +486,142 @@ class SmartImageAnalyzer:
             'all': labels,
             'counts': object_counts
         }
+    
+    
+    def _extract_detailed_objects(self, description: str, objects_data: Dict) -> Dict[str, List]:
+        """Extract detailed object categories from description and detection results"""
+        import re
+        
+        detailed = {
+            'main': [],
+            'clothing': [],
+            'accessories': [],
+            'props': [],
+            'background': [],
+            'architecture': []
+        }
+        
+        # Get main objects from detection
+        if objects_data and 'labels' in objects_data:
+            detailed['main'] = list(set(objects_data['labels'][:3]))
+        
+        desc_lower = description.lower()
+        
+        # Extract clothing
+        clothing_patterns = [
+            r'wearing\s+(?:a\s+)?([^,\.]+(?:robe|dress|shirt|suit|coat|jacket|cloak|armor))',
+            r'dressed in\s+(?:a\s+)?([^,\.]+)',
+            r'(?:red|blue|green|white|black|gold|silver)\s+(\w+(?:robe|dress|shirt|suit|coat))'
+        ]
+        for pattern in clothing_patterns:
+            matches = re.findall(pattern, desc_lower)
+            detailed['clothing'].extend(matches)
+        
+        # Extract accessories
+        accessory_patterns = [
+            r'(?:with|wearing|has)\s+(?:a\s+)?([^,\.]+(?:belt|rope|chain|necklace|ring|crown|tiara|hat|glasses))',
+            r'holding\s+(?:a\s+)?([^,\.]+)',
+            r'(?:gold|silver|leather|rope)\s+(\w+)'
+        ]
+        for pattern in accessory_patterns:
+            matches = re.findall(pattern, desc_lower)
+            detailed['accessories'].extend(matches)
+        
+        # Extract props and items
+        prop_patterns = [
+            r'(?:holding|carrying|with)\s+(?:a\s+)?([^,\.]+(?:book|staff|sword|cup|orb|scroll|bag))',
+            r'(?:sitting on|standing near|next to)\s+(?:a\s+)?([^,\.]+)'
+        ]
+        for pattern in prop_patterns:
+            matches = re.findall(pattern, desc_lower)
+            detailed['props'].extend(matches)
+        
+        # Extract background elements
+        background_patterns = [
+            r'(?:in front of|against|behind)\s+(?:a\s+)?([^,\.]+)',
+            r'(?:background shows|background with)\s+(?:a\s+)?([^,\.]+)',
+            r'set against\s+(?:a\s+)?([^,\.]+)'
+        ]
+        for pattern in background_patterns:
+            matches = re.findall(pattern, desc_lower)
+            detailed['background'].extend(matches)
+        
+        # Extract architectural elements
+        arch_keywords = ['wall', 'column', 'arch', 'door', 'window', 'castle', 'building', 'tower', 'bridge']
+        for keyword in arch_keywords:
+            if keyword in desc_lower:
+                # Find context around keyword
+                pattern = rf'(\w+\s+)?{keyword}s?(\s+\w+)?'
+                matches = re.findall(pattern, desc_lower)
+                for match in matches:
+                    full_match = ''.join(match).strip() + ' ' + keyword if match[0] else keyword + ' ' + ''.join(match).strip()
+                    detailed['architecture'].append(full_match.strip())
+        
+        # Clean up duplicates and empty strings
+        for key in detailed:
+            detailed[key] = list(set([item.strip() for item in detailed[key] if item and item.strip()]))
+        
+        return detailed
+    
+    def _extract_enhanced_environment(self, description: str, regions: List = None) -> Dict[str, str]:
+        """Extract enhanced environment information"""
+        env = {
+            'setting': 'unknown',
+            'time_of_day': 'unknown',
+            'weather': 'unknown',
+            'lighting_quality': 'unknown',
+            'atmosphere': 'unknown'
+        }
+        
+        desc_lower = description.lower()
+        
+        # Enhanced setting detection
+        indoor_keywords = ['indoor', 'room', 'interior', 'inside', 'hall', 'chamber', 'office', 'studio']
+        outdoor_keywords = ['outdoor', 'outside', 'street', 'nature', 'garden', 'forest', 'mountain', 'sky']
+        urban_keywords = ['city', 'urban', 'building', 'street', 'town']
+        fantasy_keywords = ['castle', 'tower', 'magical', 'fantasy', 'kingdom']
+        
+        for keyword in indoor_keywords:
+            if keyword in desc_lower:
+                env['setting'] = 'indoor'
+                break
+        
+        for keyword in outdoor_keywords:
+            if keyword in desc_lower:
+                env['setting'] = 'outdoor'
+                break
+                
+        for keyword in urban_keywords:
+            if keyword in desc_lower:
+                env['setting'] = 'urban'
+                break
+                
+        for keyword in fantasy_keywords:
+            if keyword in desc_lower:
+                env['setting'] = 'fantasy/medieval'
+                break
+        
+        # Lighting quality
+        if any(word in desc_lower for word in ['bright', 'well-lit', 'sunny', 'illuminated']):
+            env['lighting_quality'] = 'bright'
+        elif any(word in desc_lower for word in ['dark', 'dim', 'shadowy', 'gloomy']):
+            env['lighting_quality'] = 'dark'
+        elif any(word in desc_lower for word in ['warm', 'golden', 'amber', 'orange']):
+            env['lighting_quality'] = 'warm'
+        elif any(word in desc_lower for word in ['cool', 'blue', 'cold']):
+            env['lighting_quality'] = 'cool'
+        
+        # Atmosphere
+        if any(word in desc_lower for word in ['mysterious', 'eerie', 'spooky', 'haunting']):
+            env['atmosphere'] = 'mysterious'
+        elif any(word in desc_lower for word in ['peaceful', 'serene', 'calm', 'tranquil']):
+            env['atmosphere'] = 'peaceful'
+        elif any(word in desc_lower for word in ['dramatic', 'epic', 'grand', 'majestic']):
+            env['atmosphere'] = 'dramatic'
+        elif any(word in desc_lower for word in ['cozy', 'warm', 'inviting', 'comfortable']):
+            env['atmosphere'] = 'cozy'
+        
+        return env
     
     def _extract_style_info(self, description: str) -> Dict[str, str]:
         """Extract style information from description"""

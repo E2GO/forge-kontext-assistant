@@ -1,187 +1,184 @@
-# FluxKontext Smart Assistant V2
+# 🤖 Kontext Smart Assistant for Forge WebUI
 
-Advanced AI-powered prompt generation for FLUX.1 Kontext in Forge WebUI.
+[![Version](https://img.shields.io/badge/version-2.75-blue.svg)](https://github.com/yourusername/forge-kontext-assistant)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Forge](https://img.shields.io/badge/Forge%20WebUI-Compatible-orange.svg)](https://github.com/lllyasviel/stable-diffusion-webui-forge)
 
-## 🚀 What's New in V2
+AI-powered assistant for FLUX.1 Kontext that analyzes context images and generates optimal instructional prompts through an intuitive interface.
 
-- **Florence-2 Integration**: Real image analysis using Microsoft's Florence-2 Large model
-- **Extended Task Types**: Added lighting, texture, perspective, and seasonal changes
-- **Smart Integration**: Automatic detection and analysis of Kontext images
-- **Performance**: Optimized memory usage with lazy loading and caching
-- **Python 3.10.17 Compatibility**: Full support with collections patches
+## 🌟 Features
+
+### ✨ Current Features (v2.75)
+- **🔍 Smart Image Analysis** - Powered by Florence-2 Large for detailed scene understanding
+- **🎯 Automatic Prompt Generation** - Converts simple intentions into FLUX.1 Kontext instructions
+- **🖼️ Multi-Image Support** - Analyze up to 3 context images simultaneously
+- **⚡ Performance Modes** - GPU, CPU, and Mock modes for different hardware configurations
+- **🎨 Enhanced Object Detection** - Identifies clothing, accessories, props, and architectural elements
+- **💾 Smart Memory Management** - Automatic model loading/unloading to prevent OOM errors
+- **🆕 RTX 5090 Support** - Full compatibility with latest NVIDIA GPUs
+
+### 📸 Analysis Capabilities
+- Main objects and characters
+- Clothing and accessories
+- Props and held items
+- Background elements
+- Architectural details
+- Lighting and atmosphere
+- Art style detection
 
 ## 📋 Requirements
 
-- Forge WebUI (latest version)
-- Python 3.10+
-- PyTorch with CUDA support (recommended)
-- ~1.5GB VRAM for Florence-2
-- ~2GB disk space for models
+- **Forge WebUI** (latest version)
+- **Python** 3.10+
+- **VRAM**: 
+  - Minimum: 8GB (CPU mode)
+  - Recommended: 12GB+ (GPU mode)
+- **Compatible GPUs**: All NVIDIA GPUs (including RTX 4090/5090)
 
-## 🔧 Installation
+### Python Dependencies
+```bash
+transformers>=4.36.0
+torch>=2.0.0
+Pillow>=9.0.0
+gradio>=3.50.0
+einops
+timm
+```
 
-1. Clone into your Forge extensions folder:
+## 🚀 Installation
+
+1. **Clone the repository** into your Forge extensions folder:
 ```bash
 cd extensions
-git clone https://github.com/E2GO/forge-kontext-assistant.git
+git clone https://github.com/yourusername/forge-kontext-assistant.git
+```
+
+2. **Install dependencies**:
+```bash
 cd forge-kontext-assistant
-git checkout V2
+pip install -r requirements.txt
 ```
 
-2. Install dependencies (if not already installed):
-```bash
-pip install transformers torch torchvision
+3. **Restart Forge WebUI**
+
+## 📖 Usage
+
+### Basic Workflow
+
+1. **Load a FLUX.1 Kontext model** in the Checkpoint menu
+2. **Add context images** to the Forge FluxKontext Pro section
+3. **Open Kontext Smart Assistant** accordion
+4. **Analyze images** by clicking "Analyze Image" buttons
+5. **Select task type** from the dropdown
+6. **Describe your intent** in natural language
+7. **Generate prompt** and copy to main prompt field
+
+### Performance Settings
+
+- **🚀 GPU Mode** (Default): Fast analysis using CUDA
+- **🖥️ CPU Mode**: Compatible mode for problematic GPUs
+- **⚡ Mock Mode**: Instant results for testing (less accurate)
+
+### Example Prompts
+
+**Input**: "make the car blue"  
+**Output**: "Change the red car color to blue while maintaining the exact same model, shadows, reflections, and position. Keep all background elements, lighting conditions, and street environment unchanged."
+
+**Input**: "sunset lighting"  
+**Output**: "Transform the lighting to golden hour sunset conditions with warm orange-yellow tones casting long shadows. Preserve all objects, positions, and scene composition while adjusting only the lighting atmosphere."
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Florence-2 won't load on GPU**
+- Enable "Force CPU mode" in Performance Settings
+- This is common with RTX 4090/5090 GPUs
+
+**Analysis takes too long**
+- Use "Mock analysis" for quick testing
+- Consider upgrading to GPU with more VRAM
+
+**"Ready to download" in descriptions**
+- This artifact has been fixed in v2.75
+- Update if you're on an older version
+
+### Error Messages
+
+| Error | Solution |
+|-------|----------|
+| `IndentationError` | Run `fix_indentation.py` script |
+| `CUDA out of memory` | Enable CPU mode or reduce image size |
+| `Module not found` | Reinstall requirements.txt |
+
+## 🛠️ Advanced Configuration
+
+### Adjusting Analysis Detail
+```python
+# In ka_modules/image_analyzer.py
+# Modify Florence-2 generation parameters
+max_new_tokens=512  # Increase for more detail
+temperature=0.7     # Adjust creativity (0.1-1.0)
 ```
 
-## 🎯 Quick Start
+### Custom Task Types
+Add new task types in `configs/prompts/templates.json`
 
-1. **Test the installation**:
-```bash
-# Quick check
-python tests/quick_check.py
+## 📊 Performance Benchmarks
 
-# Test Florence-2 (downloads model on first run)
-python tests/test_florence2_simple.py
-```
+| Hardware | Mode | Analysis Time |
+|----------|------|---------------|
+| RTX 5090 | GPU* | 2-5 seconds |
+| RTX 5090 | CPU | 8-15 seconds |
+| RTX 3080 | GPU | 3-7 seconds |
+| CPU Only | CPU | 15-30 seconds |
 
-2. **In Forge WebUI**:
-   - Load FLUX.1 Kontext model
-   - Switch to img2img tab
-   - Enable "Forge FluxKontext Pro"
-   - Enable "Kontext Smart Assistant"
-   - Load your context images
-   - Click "Analyze Image" for each
-   - Select task type and describe your intent
-   - Generate optimized prompt!
+*GPU mode may require CPU fallback on some RTX 4090/5090 cards
 
-## 🎨 Supported Task Types
+## 🗺️ Roadmap
 
-### Object Manipulation
-- Color changes
-- Adding/removing elements
-- Modifying attributes
-- Resizing and repositioning
+### v3.0 (Planned)
+- [ ] Phi-3 integration for complex prompts
+- [ ] Batch image processing
+- [ ] Prompt history with search
+- [ ] Custom prompt templates
+- [ ] API endpoint for external tools
 
-### Style Transfer
-- Artistic styles
-- Time period conversion
-- Medium changes (oil painting, sketch, etc.)
-- Mood adjustments
-
-### Environment Changes
-- Location transport
-- Weather modification
-- Time of day shifts
-- Seasonal transformations
-
-### Advanced Tasks
-- Element combination
-- State changes (aging, repair)
-- Outpainting
-- Lighting adjustments
-- Texture modifications
-- Perspective shifts
-
-## 🧠 How It Works
-
-1. **Image Analysis**: Florence-2 analyzes your context images to understand:
-   - Objects and their positions
-   - Artistic style and mood
-   - Environment and setting
-   - Lighting conditions
-   - Composition
-
-2. **Smart Prompt Generation**: Based on analysis and your intent:
-   - Selects appropriate template
-   - Fills in context-aware details
-   - Adds preservation rules
-   - Optimizes for FLUX.1 Kontext
-
-3. **Integration**: Seamlessly works with Forge FluxKontext Pro:
-   - Auto-detects loaded images
-   - Shares state between scripts
-   - Manages memory efficiently
-
-## 💡 Tips for Best Results
-
-1. **Be Specific**: Instead of "make it better", say "add dramatic sunset lighting"
-2. **Use Task Types**: Select the most appropriate task type for better templates
-3. **Analyze First**: Always analyze images before generating prompts
-4. **Preserve Details**: Use the preservation strength slider to control changes
-
-## 🐛 Troubleshooting
-
-### "ImportError: cannot import name 'Mapping'"
-This is fixed in V2. If you still see it, ensure you're using the V2 branch.
-
-### Florence-2 won't load
-- Check internet connection (first download ~1.5GB)
-- Ensure sufficient disk space
-- Try: `pip install --upgrade transformers`
-
-### Out of Memory
-- Florence-2 only needs ~1.5GB VRAM
-- Use the "Unload Model" option when done
-- Restart Forge if needed
-
-## 🛠️ Development
-
-### Running Tests
-```bash
-# All tests
-python tests/test_basic.py
-
-# Florence-2 specific
-python tests/test_florence2_simple.py
-
-# Quick diagnostic
-python tests/quick_check.py
-```
-
-### Project Structure
-```
-forge-kontext-assistant/
-├── scripts/
-│   ├── kontext.py              # Main Kontext script
-│   └── kontext_assistant.py    # Smart Assistant
-├── ka_modules/                 # Assistant modules
-│   ├── image_analyzer.py       # Florence-2 integration
-│   ├── prompt_generator.py     # Prompt generation
-│   ├── templates.py           # Template library
-│   └── forge_integration.py    # Script integration
-├── configs/
-│   └── task_configs.json      # Task configurations
-└── tests/                     # Test suite
-```
-
-## 📊 Performance
-
-- Image analysis: 2-5 seconds (first run), <0.1s (cached)
-- Prompt generation: <0.5 seconds
-- Memory usage: ~1.5GB (Florence-2) + base Forge usage
-- Supports RTX 30/40/50 series, AMD RX 6000+
+### v2.8 (Next)
+- [ ] Enhanced fantasy/creature detection
+- [ ] Material and texture recognition
+- [ ] Multi-language support
+- [ ] Performance optimizations
 
 ## 🤝 Contributing
 
-Contributions welcome! Please:
+Contributions are welcome! Please:
+
 1. Fork the repository
-2. Create a feature branch
-3. Test your changes
-4. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/NewFeature`)
+3. Commit your changes (`git commit -m 'Add NewFeature'`)
+4. Push to the branch (`git push origin feature/NewFeature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-MIT License - see LICENSE file
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Credits
+## 🙏 Acknowledgments
 
-- Microsoft for Florence-2
-- Black Forest Labs for FLUX.1 Kontext
-- Forge WebUI team
-- All contributors
+- **Microsoft** for Florence-2 Large model
+- **Black Forest Labs** for FLUX.1 Kontext
+- **Forge WebUI** community for the amazing platform
+- All contributors and testers
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/yourusername/forge-kontext-assistant/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/forge-kontext-assistant/discussions)
+- **Wiki**: [Documentation](https://github.com/yourusername/forge-kontext-assistant/wiki)
 
 ---
 
-**Version**: 2.0.0  
-**Status**: Active Development  
-**Support**: [Issues](https://github.com/E2GO/forge-kontext-assistant/issues)
+**Note**: This extension enhances but does not replace the original Forge FluxKontext functionality. Both work together seamlessly.
+
+*Last updated: January 2025*
