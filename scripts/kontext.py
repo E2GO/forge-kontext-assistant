@@ -17,52 +17,6 @@ from backend.misc.image_resize import adaptive_resize
 from backend.nn.flux import IntegratedFluxTransformer2DModel
 from einops import rearrange, repeat
 
-# Smart Assistant imports
-try:
-    import sys
-    from pathlib import Path
-    
-    # Debug: Print current location
-    current_file = Path(__file__)
-    print(f"[Smart Assistant] Current file: {current_file}")
-    print(f"[Smart Assistant] Parent dir: {current_file.parent}")
-    print(f"[Smart Assistant] Extension dir: {current_file.parent.parent}")
-    
-    # Try to find ka_modules
-    ka_modules_path = current_file.parent.parent / "ka_modules"
-    print(f"[Smart Assistant] Looking for ka_modules at: {ka_modules_path}")
-    print(f"[Smart Assistant] ka_modules exists: {ka_modules_path.exists()}")
-    
-    if ka_modules_path.exists():
-        print(f"[Smart Assistant] Found ka_modules!")
-        if str(ka_modules_path) not in sys.path:
-            sys.path.insert(0, str(ka_modules_path))
-            print(f"[Smart Assistant] Added to sys.path: {ka_modules_path}")
-    else:
-        # Try alternative path
-        alt_path = current_file.parent.parent.parent / "forge-kontext-assistant" / "ka_modules"
-        print(f"[Smart Assistant] Trying alternative: {alt_path}")
-        if alt_path.exists():
-            ka_modules_path = alt_path
-            sys.path.insert(0, str(ka_modules_path))
-            print(f"[Smart Assistant] Using alternative path!")
-    
-    # Now try imports
-    print(f"[Smart Assistant] sys.path includes: {sys.path[:3]}...")
-    
-    from templates import PromptTemplates
-    from prompt_generator import PromptGenerator
-    HAS_SMART_ASSISTANT = True
-    print("[Smart Assistant] ✅ Import successful!")
-except ImportError as e:
-    HAS_SMART_ASSISTANT = False
-    print(f"[Smart Assistant] ❌ Import failed: {e}")
-except Exception as e:
-    HAS_SMART_ASSISTANT = False
-    print(f"[Smart Assistant] ❌ Unexpected error: {e}")
-    print(f"Smart Assistant not available: {e}")
-
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForgeKontext")
@@ -406,6 +360,9 @@ class ForgeKontext(scripts.Script):
     _model_patcher = SafeModelPatcher()
     _active_state: Optional[KontextState] = None
     
+    # Add image sharing functionality
+    _current_kontext_images: List[Optional[Image.Image]] = [None, None, None]
+    
     def __init__(self):
         super().__init__()
         self.config = KontextConfig()
@@ -423,6 +380,17 @@ class ForgeKontext(scripts.Script):
     def set_current_kontext_state(cls, state: Optional[KontextState]) -> None:
         """Set the currently active kontext state."""
         cls._active_state = state
+    
+    @classmethod
+    def get_kontext_images(cls) -> List[Optional[Image.Image]]:
+        """Get currently loaded kontext images for other extensions"""
+        return cls._current_kontext_images.copy()
+    
+    @classmethod  
+    def set_kontext_images(cls, images: List[Optional[Image.Image]]) -> None:
+        """Store kontext images for access by other extensions"""
+        cls._current_kontext_images = images.copy() if images else [None, None, None]
+        logger.debug(f"Stored {sum(1 for img in images if img is not None)} kontext images for sharing")
     
     def title(self) -> str:
         return "Forge FluxKontext Pro"
@@ -479,7 +447,8 @@ class ForgeKontext(scripts.Script):
                             type="pil",
                             height=200,
                             sources=["upload", "clipboard"],
-                            show_label=False
+                            show_label=False,
+                            elem_id=f"kontext_image_{i}"
                         )
                         kontext_images.append(img)
                         
@@ -503,188 +472,34 @@ class ForgeKontext(scripts.Script):
                             )
                             set_dims_buttons.append(set_btn)
             
-            # Kontext image size/crop section
-                                    # Smart Assistant Integration
-                        if HAS_SMART_ASSISTANT:
-                            gradio.Markdown("---")
-                            with gradio.Accordion("🤖 Smart Assistant - AI Prompt Generation", open=False):
-                                gradio.Markdown("💡 Analyzes your images and generates optimal FLUX.1 Kontext prompts")
-                    
-                                # Initialize generators
-                                sa_templates = PromptTemplates()
-                                sa_generator = PromptGenerator(sa_templates)
-                    
-                                # Analysis display for each image
-                                gradio.Markdown("### 📸 Quick Analysis")
-                                sa_analysis_displays = []
-                    
-                                for i in range(3):
-                                    with gradio.Row():
-                                        sa_analyze_btn = gradio.Button(
-                                            f"Analyze Image {i+1}",
-                                            variant="secondary",
-                                            scale=1
-                                        )
-                                        sa_analysis_text = gradio.Textbox(
-                                            value="",
-                                            label=None,
-                                            interactive=False,
-                                            scale=3,
-                                            container=False,
-                                            placeholder=f"Click to analyze kontext image {i+1}..."
-                                        )
-                                        sa_analysis_displays.append((sa_analyze_btn, sa_analysis_text))
-                    
-                                # Prompt Generation
-                                gradio.Markdown("### ✨ Prompt Generation")
-                    
-                                with gradio.Row():
-                                    sa_task_type = gradio.Dropdown(
-                                        label="Task Type",
-                                        choices=[
-                                            ("🎨 Change Color", "object_manipulation"),
-                                            ("🖼️ Style Transfer", "style_transfer"),
-                                            ("🌅 Environment Change", "environment_change"),
-                                            ("💡 Lighting Adjustment", "lighting_adjustment"),
-                                            ("🔄 State Change", "state_change"),
-                                            ("↔️ Outpainting", "outpainting")
-                                        ],
-                                        value="object_manipulation",
-                                        scale=2
-                                    )
-                        
-                                    sa_user_intent = gradio.Textbox(
-                                        label="What do you want?",
-                                        placeholder="e.g., 'blue car', 'sunset', 'oil painting style'...",
-                                        lines=1,
-                                        scale=3
-                                    )
-                    
-                                with gradio.Row():
-                                    sa_generate_btn = gradio.Button(
-                                        "🎯 Generate Prompt",
-                                        variant="primary",
-                                        size="lg",
-                                        scale=1
-                                    )
-                                    sa_copy_btn = gradio.Button(
-                                        "📋 Copy to Main Prompt",
-                                        variant="secondary",
-                                        scale=1
-                                    )
-                    
-                                sa_generated_prompt = gradio.Textbox(
-                                    label="Generated Prompt",
-                                    lines=4,
-                                    interactive=True,
-                                    placeholder="Your optimized FLUX.1 Kontext prompt will appear here..."
-                                )
-                    
-                                # Hidden storage for analysis data
-                                sa_analysis_data = [gradio.State(value={}) for _ in range(3)]
-                    
-                                # Connect analyze buttons
-                                def analyze_kontext_image(image, idx):
-                                    if image is None:
-                                        return "❌ No image in this slot", {}
-                        
-                                    # Simple analysis without Florence-2
-                                    analysis = {
-                                        "size": f"{image.size[0]}x{image.size[1]}",
-                                        "mode": image.mode,
-                                        "has_image": True
-                                    }
-                        
-                                    # Get dominant colors (simple version)
-                                    try:
-                                        from PIL import Image
-                                        img_small = image.resize((50, 50))
-                                        colors = img_small.getcolors(maxcolors=10)
-                                        if colors:
-                                            dominant_colors = sorted(colors, key=lambda x: x[0], reverse=True)[:3]
-                                            analysis["colors"] = [str(c[1]) for c in dominant_colors]
-                                    except:
-                                        analysis["colors"] = []
-                        
-                                    result = f"✅ Image {idx+1}: {analysis['size']} pixels"
-                                    if analysis.get("colors"):
-                                        result += f", dominant colors detected"
-                        
-                                    return result, analysis
-                    
-                                # Connect each analyze button
-                                for i, (btn, display) in enumerate(sa_analysis_displays):
-                                    btn.click(
-                                        fn=lambda img, idx=i: analyze_kontext_image(img, idx),
-                                        inputs=[kontext_images[i]],
-                                        outputs=[display, sa_analysis_data[i]]
-                                    )
-                    
-                                # Generate prompt function
-                                def generate_smart_prompt(task_type, user_intent, *args):
-                                    # args contains the 3 analysis data states
-                                    analyses = args[:3]
-                        
-                                    if not user_intent:
-                                        return "❌ Please describe what you want to change"
-                        
-                                    # Check if any images are analyzed
-                                    has_images = any(a.get("has_image") for a in analyses if a)
-                        
-                                    # Build context from analyses
-                                    context = {}
-                                    if has_images:
-                                        sizes = [a.get("size", "") for a in analyses if a.get("has_image")]
-                                        if sizes:
-                                            context["image_info"] = f"Working with {len(sizes)} image(s)"
-                        
-                                    # Generate prompt
-                                    try:
-                                        prompt = sa_generator.generate(
-                                            task_type=task_type,
-                                            user_intent=user_intent,
-                                            image_analysis=context
-                                        )
-                                        return prompt
-                                    except Exception as e:
-                                        # Fallback templates
-                                        templates = {
-                                            "object_manipulation": f"Change {user_intent}. Preserve all other elements exactly as they are.",
-                                            "style_transfer": f"Transform the image into {user_intent} style. Maintain all subjects and composition.",
-                                            "environment_change": f"Change the environment to {user_intent}. Keep all subjects in their exact positions.",
-                                            "lighting_adjustment": f"Adjust lighting to {user_intent}. Maintain all objects and colors.",
-                                            "state_change": f"Transform to show {user_intent}. Create realistic progression.",
-                                            "outpainting": f"Extend the image {user_intent}. Continue the scene naturally."
-                                        }
-                                        return templates.get(task_type, f"Execute: {user_intent}")
-                    
-                                sa_generate_btn.click(
-                                    fn=generate_smart_prompt,
-                                    inputs=[sa_task_type, sa_user_intent] + sa_analysis_data,
-                                    outputs=sa_generated_prompt
-                                )
-                    
-                                # Copy to main prompt function
-                                def copy_to_main_prompt(generated_prompt):
-                                    # This is a placeholder - in real integration, 
-                                    # you'd copy to the main prompt field
-                                    return generated_prompt
-                    
-                                sa_copy_btn.click(
-                                    fn=copy_to_main_prompt,
-                                    inputs=sa_generated_prompt,
-                                    outputs=sa_generated_prompt  # Just for feedback
-                                )
+            # Initialize shared images storage
+            ForgeKontext.set_kontext_images(kontext_images)
+            
+            # Single update function that avoids loops
+            def store_kontext_images(img0, img1, img2):
+                """Store images when they change"""
+                images = [img0, img1, img2]
+                ForgeKontext.set_kontext_images(images)
+                # Don't return anything to avoid update loops
                 
-                            gradio.Markdown("---")
-                        else:
-                            # Fallback if Smart Assistant modules not found
-                            gradio.Markdown("---")
-                            with gradio.Accordion("🤖 Smart Assistant", open=False):
-                                gradio.Markdown("⚠️ Smart Assistant modules not found in ka_modules/")
-                                gradio.Markdown("Make sure ka_modules folder is in the extension directory.")
-                            gradio.Markdown("---")
-
+            # Connect each image individually to avoid circular updates
+            kontext_images[0].change(
+                fn=store_kontext_images,
+                inputs=kontext_images,
+                outputs=[]  # Empty outputs to prevent loops
+            )
+            kontext_images[1].change(
+                fn=store_kontext_images,
+                inputs=kontext_images,
+                outputs=[]
+            )
+            kontext_images[2].change(
+                fn=store_kontext_images,
+                inputs=kontext_images,
+                outputs=[]
+            )
+            
+            # Kontext image size/crop section
             gradio.Markdown("**Kontext image size/crop**")
             
             with gradio.Row():

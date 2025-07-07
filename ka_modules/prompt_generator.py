@@ -1,370 +1,334 @@
 """
-Prompt generation engine with Florence-2 integration.
-Generates FLUX.1 Kontext-compatible instructional prompts.
+Prompt Generator Module for Kontext Smart Assistant
+Generates instructional prompts for FLUX.1 Kontext based on user intent
 """
 
 import re
+from typing import Dict, List, Optional, Tuple, Any
 import json
-import logging
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
+from pathlib import Path
 
-# Compatibility fix
+# Fix imports for Forge environment
+try:
+    # Try absolute import first
+    from ka_modules.templates import PromptTemplates
+except ImportError:
+    try:
+        # Try relative import
+        from .templates import PromptTemplates
+    except ImportError:
+        # Fallback to direct import if in same directory
+        from templates import PromptTemplates
+
+# For Python 3.10 compatibility
 try:
     from collections.abc import Mapping
 except ImportError:
     from collections import Mapping
 
-from .templates import PromptTemplates
-
-logger = logging.getLogger("KontextAssistant.PromptGenerator")
-
-
-@dataclass
-class GenerationContext:
-    """Context for prompt generation."""
-    task_type: str
-    subtype: str
-    user_intent: str
-    image_analysis: Optional[Dict[str, Any]] = None
-    preserve_strength: float = 0.7
-    custom_params: Optional[Dict[str, Any]] = None
-
 
 class PromptGenerator:
-    """Generates instructional prompts for FLUX.1 Kontext."""
+    """Generate contextual prompts for FLUX.1 Kontext"""
     
-    def __init__(self, templates: PromptTemplates):
-        self.templates = templates
-        self.complexity_threshold = 0.7
+    def __init__(self, templates: Optional[PromptTemplates] = None):
+        """Initialize with template system"""
+        self.templates = templates or PromptTemplates()
+        self.last_generated = None
+        self.generation_history = []
         
-    def generate(
-        self,
-        task_type: str,
-        user_intent: str,
-        image_analysis: Optional[Dict[str, Any]] = None,
-        subtype: Optional[str] = None,
-        preserve_strength: float = 0.7,
-        **kwargs
-    ) -> str:
+    def generate(self, task_type: str, user_intent: str, 
+                 image_analysis: Optional[Dict] = None,
+                 advanced_mode: bool = False) -> str:
         """
-        Generate a FLUX.1 Kontext prompt based on inputs.
+        Generate a FLUX.1 Kontext prompt based on inputs
         
         Args:
             task_type: Type of editing task
             user_intent: User's description of desired change
-            image_analysis: Analysis data from Florence-2
-            subtype: Specific subtype of the task
-            preserve_strength: How much to preserve (0-1)
-            **kwargs: Additional parameters
+            image_analysis: Optional analysis results from Florence-2
+            advanced_mode: Whether to use more complex generation
             
         Returns:
             Generated instructional prompt
         """
+        # Validate inputs
+        if not task_type or not user_intent:
+            return "Please specify both task type and what you want to change"
+            
+        # Clean and normalize user intent
+        user_intent = user_intent.strip().lower()
+        
+        # Get base template
+        template = self.templates.get_template(task_type)
+        if not template:
+            # Fallback to generic template
+            template = "Change {user_intent}. Preserve all other elements."
+        
+        # Extract parameters from intent
+        params = self._extract_parameters(user_intent, task_type, image_analysis)
+        
+        # Fill template
         try:
-            # Create generation context
-            context = GenerationContext(
-                task_type=task_type,
-                subtype=subtype or "default",
-                user_intent=user_intent,
-                image_analysis=image_analysis or {},
-                preserve_strength=preserve_strength,
-                custom_params=kwargs
-            )
-            
-            # Extract key information from user intent
-            intent_params = self._parse_user_intent(context)
-            
-            # Get appropriate template
-            template = self._select_template(context, intent_params)
-            
-            # Extract template parameters from analysis
-            template_params = self._extract_template_params(
-                template, 
-                context, 
-                intent_params
-            )
-            
-            # Generate base prompt
-            prompt = self._fill_template(template, template_params)
-            
-            # Add preservation rules
-            prompt = self._add_preservation_rules(prompt, context)
-            
-            # Optimize for FLUX.1 Kontext
-            prompt = self._optimize_for_kontext(prompt, context)
-            
-            logger.info(f"Generated prompt for {task_type}/{subtype}")
-            return prompt
-            
-        except Exception as e:
-            logger.error(f"Prompt generation failed: {str(e)}")
-            # Fallback to simple generation
-            return self._generate_fallback(user_intent)
+            # First, try to format with extracted params
+            prompt = template.format(**params)
+        except KeyError as e:
+            # If some keys are missing, use a simpler approach
+            prompt = self._simple_fill(template, params)
+        
+        # Add preservation rules based on task
+        prompt = self._add_preservation_rules(prompt, task_type, params)
+        
+        # Add context from image analysis
+        if image_analysis:
+            prompt = self._enhance_with_context(prompt, image_analysis)
+        
+        # Store in history
+        self.last_generated = prompt
+        self.generation_history.append({
+            'task_type': task_type,
+            'user_intent': user_intent,
+            'prompt': prompt
+        })
+        
+        return prompt
     
-    def _parse_user_intent(self, context: GenerationContext) -> Dict[str, Any]:
-        """Parse user intent to extract key information."""
-        intent = context.user_intent.lower()
-        params = {}
-        
-        # Extract colors
-        color_pattern = r'\b(red|blue|green|yellow|orange|purple|pink|black|white|gray|brown|golden|silver)\b'
-        colors = re.findall(color_pattern, intent)
-        if colors:
-            params['target_color'] = colors[-1]  # Last mentioned color is usually target
-            if len(colors) > 1:
-                params['source_color'] = colors[0]
-        
-        # Extract objects
-        # Common objects in prompts
-        object_words = [
-            'car', 'person', 'building', 'tree', 'sky', 'road', 'wall',
-            'dress', 'shirt', 'hair', 'eyes', 'background', 'object'
-        ]
-        for obj in object_words:
-            if obj in intent:
-                params['target_object'] = obj
-                break
-        
-        # Extract actions
-        action_patterns = {
-            'add': r'\b(add|insert|place|put)\b',
-            'remove': r'\b(remove|delete|erase|eliminate)\b',
-            'change': r'\b(change|transform|convert|make|turn)\b',
-            'replace': r'\b(replace|swap|substitute)\b'
+    def _extract_parameters(self, user_intent: str, task_type: str, 
+                           image_analysis: Optional[Dict] = None) -> Dict[str, Any]:
+        """Extract relevant parameters from user intent"""
+        params = {
+            'user_intent': user_intent,
+            'original_intent': user_intent
         }
         
-        for action, pattern in action_patterns.items():
-            if re.search(pattern, intent):
-                params['action'] = action
-                break
+        # Task-specific extraction
+        if task_type == 'object_manipulation':
+            params.update(self._extract_object_params(user_intent))
+        elif task_type == 'style_transfer':
+            params.update(self._extract_style_params(user_intent))
+        elif task_type == 'environment_change':
+            params.update(self._extract_environment_params(user_intent))
+        elif task_type == 'lighting_adjustment':
+            params.update(self._extract_lighting_params(user_intent))
+        elif task_type == 'state_change':
+            params.update(self._extract_state_params(user_intent))
+        elif task_type == 'outpainting':
+            params.update(self._extract_outpainting_params(user_intent))
         
-        # Extract styles
-        style_words = [
-            'realistic', 'cartoon', 'anime', 'painting', 'sketch',
-            'vintage', 'modern', 'retro', 'cyberpunk', 'steampunk'
-        ]
-        for style in style_words:
+        # Add context from image analysis
+        if image_analysis:
+            params.update(self._extract_from_analysis(image_analysis))
+        
+        return params
+    
+    def _extract_object_params(self, intent: str) -> Dict[str, str]:
+        """Extract object-related parameters"""
+        params = {}
+        
+        # Color patterns
+        color_match = re.search(r'(red|blue|green|yellow|black|white|purple|orange|pink|brown|gray|grey)\s+(\w+)', intent)
+        if color_match:
+            params['target_color'] = color_match.group(1)
+            params['object'] = color_match.group(2)
+        
+        # Action patterns
+        if 'remove' in intent:
+            params['action'] = 'remove'
+        elif 'add' in intent:
+            params['action'] = 'add'
+        elif 'change' in intent or 'make' in intent:
+            params['action'] = 'change'
+        
+        # Extract object if not already found
+        if 'object' not in params:
+            # Common objects
+            objects = ['car', 'person', 'building', 'tree', 'sky', 'ground', 'wall', 'door', 'window']
+            for obj in objects:
+                if obj in intent:
+                    params['object'] = obj
+                    break
+        
+        return params
+    
+    def _extract_style_params(self, intent: str) -> Dict[str, str]:
+        """Extract style-related parameters"""
+        params = {}
+        
+        # Art styles
+        styles = {
+            'anime': 'anime art style with characteristic features',
+            'oil painting': 'oil painting with visible brushstrokes',
+            'watercolor': 'watercolor painting with fluid colors',
+            'sketch': 'pencil sketch with detailed linework',
+            'cartoon': 'cartoon style with bold outlines',
+            'photorealistic': 'photorealistic rendering',
+            'cyberpunk': 'cyberpunk style with neon and tech',
+            'vintage': 'vintage photography style',
+            'minimalist': 'minimalist artistic style'
+        }
+        
+        for style, description in styles.items():
             if style in intent:
                 params['target_style'] = style
-                break
-        
-        # Extract time/weather
-        time_words = {
-            'morning': 'morning',
-            'sunset': 'evening', 
-            'sunrise': 'dawn',
-            'night': 'night',
-            'evening': 'evening',
-            'noon': 'midday'
-        }
-        for word, time in time_words.items():
-            if word in intent:
-                params['target_time'] = time
-                break
-        
-        weather_words = ['rain', 'snow', 'fog', 'sunny', 'cloudy', 'storm']
-        for weather in weather_words:
-            if weather in intent:
-                params['target_weather'] = weather
+                params['style_description'] = description
                 break
         
         return params
     
-    def _select_template(self, context: GenerationContext, intent_params: Dict) -> str:
-        """Select the most appropriate template."""
-        task_type = context.task_type
-        subtype = context.subtype
-        
-        # Try to get specific template
-        template = self.templates.get_template(task_type, subtype)
-        if template:
-            return template
-        
-        # Fallback to default for task type
-        template = self.templates.get_template(task_type, "default")
-        if template:
-            return template
-        
-        # Ultimate fallback
-        return "Change {target} to {description}. Keep everything else unchanged."
-    
-    def _extract_template_params(
-        self, 
-        template: str, 
-        context: GenerationContext,
-        intent_params: Dict
-    ) -> Dict[str, str]:
-        """Extract parameters needed for template from context and analysis."""
-        # Find all template variables
-        variables = re.findall(r'\{(\w+)\}', template)
+    def _extract_environment_params(self, intent: str) -> Dict[str, str]:
+        """Extract environment-related parameters"""
         params = {}
         
-        # Get data from image analysis if available
-        analysis = context.image_analysis
+        # Environments
+        environments = ['beach', 'mountain', 'city', 'forest', 'desert', 'space', 
+                       'underwater', 'indoor', 'outdoor', 'street', 'park']
         
-        for var in variables:
-            # First check intent params
-            if var in intent_params:
-                params[var] = intent_params[var]
-                continue
-            
-            # Then check analysis data
-            if analysis:
-                # Map template variables to analysis data
-                if var == 'object' and 'objects' in analysis:
-                    objects = analysis.get('objects', [])
-                    if objects:
-                        params[var] = objects[0] if isinstance(objects, list) else "object"
-                
-                elif var == 'current_style' and 'styles' in analysis:
-                    styles = analysis.get('styles', [])
-                    if styles:
-                        params[var] = styles[0] if isinstance(styles, list) else "current style"
-                
-                elif var == 'setting' and 'environment' in analysis:
-                    params[var] = analysis.get('environment', {}).get('setting', 'scene')
-                
-                elif var == 'current_time' and 'environment' in analysis:
-                    params[var] = analysis.get('environment', {}).get('time_of_day', 'current time')
-            
-            # Default values for common variables
-            if var not in params:
-                defaults = {
-                    'object': 'subject',
-                    'target': 'element',
-                    'description': context.user_intent,
-                    'style': 'style',
-                    'current_style': 'current style',
-                    'new_style': intent_params.get('target_style', 'new style'),
-                    'setting': 'environment',
-                    'atmosphere': 'atmosphere',
-                    'current_time': 'current time',
-                    'new_time': intent_params.get('target_time', 'new time'),
-                    'preservation_rules': self._get_preservation_rules(context)
-                }
-                params[var] = defaults.get(var, var)
+        for env in environments:
+            if env in intent:
+                params['target_environment'] = env
+                break
+        
+        # Time of day
+        times = ['sunset', 'sunrise', 'night', 'day', 'evening', 'morning', 'afternoon']
+        for time in times:
+            if time in intent:
+                params['time_of_day'] = time
+                break
+        
+        # Weather
+        weather = ['sunny', 'rainy', 'cloudy', 'snowy', 'foggy', 'stormy']
+        for w in weather:
+            if w in intent:
+                params['weather'] = w
+                break
         
         return params
     
-    def _fill_template(self, template: str, params: Dict[str, str]) -> str:
-        """Fill template with parameters."""
-        prompt = template
+    def _extract_lighting_params(self, intent: str) -> Dict[str, str]:
+        """Extract lighting-related parameters"""
+        params = {}
+        
+        # Lighting conditions
+        if 'bright' in intent:
+            params['lighting_intensity'] = 'bright'
+        elif 'dark' in intent:
+            params['lighting_intensity'] = 'dark'
+        elif 'dim' in intent:
+            params['lighting_intensity'] = 'dim'
+        
+        # Lighting types
+        lighting_types = ['natural', 'artificial', 'neon', 'candlelight', 'moonlight', 'sunlight']
+        for light in lighting_types:
+            if light in intent:
+                params['lighting_type'] = light
+                break
+        
+        return params
+    
+    def _extract_state_params(self, intent: str) -> Dict[str, str]:
+        """Extract state change parameters"""
+        params = {}
+        
+        # States
+        if 'broken' in intent:
+            params['target_state'] = 'broken'
+        elif 'old' in intent or 'aged' in intent:
+            params['target_state'] = 'aged'
+        elif 'new' in intent:
+            params['target_state'] = 'new'
+        elif 'wet' in intent:
+            params['target_state'] = 'wet'
+        elif 'dry' in intent:
+            params['target_state'] = 'dry'
+        
+        return params
+    
+    def _extract_outpainting_params(self, intent: str) -> Dict[str, str]:
+        """Extract outpainting parameters"""
+        params = {}
+        
+        # Directions
+        directions = ['left', 'right', 'top', 'bottom', 'all sides']
+        for direction in directions:
+            if direction in intent:
+                params['direction'] = direction
+                break
+        
+        # Amount
+        if '2x' in intent or 'double' in intent:
+            params['expansion'] = '2x'
+        elif '3x' in intent or 'triple' in intent:
+            params['expansion'] = '3x'
+        
+        return params
+    
+    def _extract_from_analysis(self, analysis: Dict) -> Dict[str, Any]:
+        """Extract parameters from image analysis"""
+        params = {}
+        
+        # This will be enhanced when Florence-2 is integrated
+        if 'objects' in analysis:
+            params['detected_objects'] = ', '.join(analysis['objects'])
+        if 'style' in analysis:
+            params['current_style'] = analysis['style']
+        
+        return params
+    
+    def _simple_fill(self, template: str, params: Dict[str, Any]) -> str:
+        """Simple template filling when format() fails"""
+        result = template
+        
+        # Replace placeholders manually
         for key, value in params.items():
-            prompt = prompt.replace(f"{{{key}}}", str(value))
-        return prompt
+            placeholder = f"{{{key}}}"
+            if placeholder in result:
+                result = result.replace(placeholder, str(value))
+        
+        # Remove any remaining placeholders
+        result = re.sub(r'\{[^}]+\}', '', result)
+        
+        return result.strip()
     
-    def _add_preservation_rules(self, prompt: str, context: GenerationContext) -> str:
-        """Add preservation rules based on context."""
-        if context.preserve_strength < 0.3:
-            # Low preservation - minimal rules
-            return prompt
+    def _add_preservation_rules(self, prompt: str, task_type: str, 
+                               params: Dict[str, Any]) -> str:
+        """Add appropriate preservation rules based on task type"""
+        preservation = []
         
-        # Check if preservation rules already in prompt
-        if "preserve" in prompt.lower() or "maintain" in prompt.lower():
-            return prompt
+        # Get preservation rules from config
+        rules = self.templates.get_preservation_rules(task_type)
+        if rules:
+            preservation.extend(rules)
         
-        # Add preservation based on task type
-        preservation_rules = self._get_preservation_rules(context)
+        # Add dynamic rules based on parameters
+        if params.get('object') and task_type != 'object_manipulation':
+            preservation.append(f"the {params['object']}")
         
-        if preservation_rules and context.preserve_strength > 0.5:
-            prompt += f" {preservation_rules}"
-        
-        return prompt
-    
-    def _get_preservation_rules(self, context: GenerationContext) -> str:
-        """Get preservation rules for the task type."""
-        rules = {
-            "object_manipulation": "Preserve all other objects, background, lighting, and composition exactly as they are.",
-            "style_transfer": "Maintain the exact same composition, objects, and their positions while only changing the artistic style.",
-            "environment_change": "Keep all subjects in their exact positions and poses, only modify the environment around them.",
-            "element_combination": "Preserve the individual characteristics of each element while blending them naturally.",
-            "state_change": "Maintain object identity and position while showing the transformation.",
-            "outpainting": "Seamlessly extend the scene while maintaining consistency with the original image."
-        }
-        
-        base_rule = rules.get(context.task_type, "Keep all unmodified elements exactly as they are.")
-        
-        # Adjust based on preservation strength
-        if context.preserve_strength > 0.8:
-            base_rule = "Strictly " + base_rule.lower()
-        elif context.preserve_strength < 0.5:
-            base_rule = base_rule.replace("exactly", "generally")
-        
-        return base_rule
-    
-    def _optimize_for_kontext(self, prompt: str, context: GenerationContext) -> str:
-        """Optimize prompt for FLUX.1 Kontext's instruction-following."""
-        # Remove vague descriptors
-        vague_words = ['maybe', 'perhaps', 'somewhat', 'kind of', 'sort of']
-        for word in vague_words:
-            prompt = prompt.replace(word, '')
-        
-        # Ensure action verbs are clear
-        if not any(verb in prompt.lower() for verb in ['change', 'add', 'remove', 'replace', 'transform']):
-            # Add explicit action verb
-            prompt = f"Change to: {prompt}"
-        
-        # Remove redundant spaces
-        prompt = ' '.join(prompt.split())
-        
-        # Ensure it ends with a period
-        if not prompt.endswith('.'):
-            prompt += '.'
+        if preservation and "preserve" not in prompt.lower():
+            preservation_text = f" Preserve {', '.join(preservation)}."
+            prompt += preservation_text
         
         return prompt
     
-    def _generate_fallback(self, user_intent: str) -> str:
-        """Generate a simple fallback prompt."""
-        # Clean up intent
-        intent = user_intent.strip()
-        if not intent:
-            return "Make adjustments to the image as needed."
-        
-        # Ensure it's instructional
-        if not any(word in intent.lower() for word in ['change', 'add', 'remove', 'make']):
-            intent = f"Change to: {intent}"
-        
-        # Add basic preservation
-        return f"{intent}. Maintain all other elements unchanged."
+    def _enhance_with_context(self, prompt: str, analysis: Dict) -> str:
+        """Enhance prompt with context from image analysis"""
+        # This will be expanded when Florence-2 is integrated
+        # For now, just ensure we have context awareness
+        if analysis and not prompt.startswith("In the image"):
+            context_prefix = "In the analyzed image, "
+            return context_prefix + prompt[0].lower() + prompt[1:]
+        return prompt
     
-    def assess_complexity(self, user_intent: str, image_analysis: Optional[Dict] = None) -> float:
-        """
-        Assess the complexity of the user's request.
-        
-        Returns:
-            float: Complexity score (0-1)
-        """
-        score = 0.0
-        
-        # Length complexity
-        word_count = len(user_intent.split())
-        if word_count > 20:
-            score += 0.2
-        elif word_count > 10:
-            score += 0.1
-        
-        # Multiple operations
-        operations = ['and', 'then', 'also', 'plus', 'with']
-        op_count = sum(1 for op in operations if op in user_intent.lower())
-        score += min(op_count * 0.15, 0.3)
-        
-        # Cultural/artistic references
-        cultural_terms = [
-            'style of', 'inspired by', 'reminiscent of', 'like a',
-            'as if', 'similar to', 'in the manner of'
-        ]
-        if any(term in user_intent.lower() for term in cultural_terms):
-            score += 0.2
-        
-        # Ambiguous terms
-        ambiguous = ['artistic', 'beautiful', 'better', 'improve', 'enhance']
-        amb_count = sum(1 for term in ambiguous if term in user_intent.lower())
-        score += min(amb_count * 0.1, 0.2)
-        
-        # Complex state changes
-        complex_changes = ['aging', 'decay', 'transformation', 'metamorphosis']
-        if any(term in user_intent.lower() for term in complex_changes):
-            score += 0.2
-        
-        return min(score, 1.0)
+    def _extract_template_params(self, template: str) -> List[str]:
+        """Extract parameter names from a template string"""
+        # Find all {param_name} patterns
+        pattern = r'\{(\w+)\}'
+        matches = re.findall(pattern, template)
+        return list(set(matches))  # Remove duplicates
+    
+    def get_history(self) -> List[Dict]:
+        """Get generation history"""
+        return self.generation_history.copy()
+    
+    def clear_history(self) -> None:
+        """Clear generation history"""
+        self.generation_history.clear()
+        self.last_generated = None

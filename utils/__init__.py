@@ -1,15 +1,9 @@
+# Utils package for Forge Kontext Assistant
 """
-Utility modules for Kontext Assistant.
+Utility modules for caching and validation
 """
 
-# Fix for Python 3.10 compatibility
-import collections
-import collections.abc
-for attr in dir(collections.abc):
-    if not hasattr(collections, attr):
-        setattr(collections, attr, getattr(collections.abc, attr))
-
-from .cache import SimpleCache
+from .cache import LRUCache
 from .validators import ImageValidator, PromptValidator
 
-__all__ = ['SimpleCache', 'ImageValidator', 'PromptValidator']
+__all__ = ['LRUCache', 'ImageValidator', 'PromptValidator']
