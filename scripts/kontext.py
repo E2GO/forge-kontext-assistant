@@ -21,6 +21,16 @@ from einops import rearrange, repeat
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ForgeKontext")
 
+# Try to import shared state for Kontext Assistant
+try:
+    from ka_modules.shared_state import shared_state
+    KA_AVAILABLE = True
+    logger.info("Kontext Assistant shared state available")
+except ImportError:
+    KA_AVAILABLE = False
+    shared_state = None
+    logger.debug("Kontext Assistant shared state not available")
+
 # Constants
 PATCH_SIZE = 2
 VAE_SCALE_FACTOR = 8
@@ -480,6 +490,9 @@ class ForgeKontext(scripts.Script):
                 """Store images when they change"""
                 images = [img0, img1, img2]
                 ForgeKontext.set_kontext_images(images)
+                # Also update shared state for kontext assistant
+                if KA_AVAILABLE and shared_state:
+                    shared_state.set_images(images)
                 # Don't return anything to avoid update loops
                 
             # Connect each image individually to avoid circular updates
@@ -689,6 +702,10 @@ class ForgeKontext(scripts.Script):
         reduce = script_args[5]
         enable_metrics = script_args[6] if len(script_args) > 6 else True
         dims_info = script_args[7] if len(script_args) > 7 else "0"
+        
+        # Update shared state with current images
+        if KA_AVAILABLE and shared_state:
+            shared_state.set_images(kontext_images)
         
         # Update config
         self.config.enable_performance_metrics = enable_metrics

@@ -39,6 +39,7 @@ try:
     from ka_modules.templates import PromptTemplates
     from ka_modules.prompt_generator import PromptGenerator
     from ka_modules.image_analyzer import ImageAnalyzer
+    from ka_modules.shared_state import shared_state
     MODULES_AVAILABLE = True
     logger.info("Smart Assistant modules loaded successfully")
 except ImportError as e:
@@ -55,6 +56,8 @@ class KontextAssistant(scripts.Script):
         self.generator = None
         self.analyzer = None
         self.initialized = False
+        # Store references to kontext images UI components
+        self.kontext_image_components = None
         
     def title(self):
         return "Kontext Smart Assistant"
@@ -76,42 +79,129 @@ class KontextAssistant(scripts.Script):
                 logger.error(f"Failed to initialize modules: {e}")
                 self.initialized = False
     
-    def _find_kontext_images(self, *args) -> List[Optional[Image.Image]]:
-        """Try to find kontext images from the main kontext script"""
+    def _get_kontext_images_from_ui(self, *args) -> List[Optional[Image.Image]]:
+        """Get kontext images from shared state or UI args"""
         kontext_images = []
         
-        # Try to get from ForgeKontext class
-        try:
-            # Import here to avoid circular imports
-            import sys
-            from pathlib import Path
-            
-            # Add scripts directory to path if needed
-            scripts_dir = Path(__file__).parent
-            if str(scripts_dir) not in sys.path:
-                sys.path.insert(0, str(scripts_dir))
-            
-            # Try to import kontext module
-            try:
-                from kontext import ForgeKontext
-                kontext_images = ForgeKontext.get_kontext_images()
-                
-                # Debug output
-                image_count = sum(1 for img in kontext_images if img is not None)
-                if image_count > 0:
-                    logger.info(f"Successfully retrieved {image_count} kontext images")
-                    
-                return kontext_images
-                
-            except ImportError as e:
-                logger.debug(f"Could not import ForgeKontext: {e}")
-                
-        except Exception as e:
-            logger.debug(f"Error getting images from ForgeKontext: {e}")
+        # Debug logging
+        logger.info(f"[DEBUG] _get_kontext_images_from_ui called with {len(args)} args")
         
-        # If we couldn't get images, return empty list
-        logger.debug("No kontext images found")
-        return [None, None, None]
+        # First try to get from shared state
+        if MODULES_AVAILABLE and shared_state:
+            kontext_images = shared_state.get_images()
+            image_count = sum(1 for img in kontext_images if img is not None)
+            logger.info(f"[DEBUG] Shared state has {image_count} images")
+            if any(img is not None for img in kontext_images):
+                logger.debug(f"Got {shared_state.image_count} images from shared state")
+                return kontext_images
+        else:
+            logger.info("[DEBUG] Shared state not available")
+        
+        # Fallback to parsing UI args
+        logger.debug(f"Total args received: {len(args)}")
+        
+        # Log arg types for debugging
+        for i, arg in enumerate(args[:10]):  # First 10 args
+            arg_type = type(arg).__name__
+            if hasattr(arg, 'size') and hasattr(arg, 'mode'):
+                logger.info(f"[DEBUG] Arg {i}: PIL Image {arg.size}")
+            else:
+                logger.info(f"[DEBUG] Arg {i}: {arg_type}")
+        
+        # Try to find kontext images in args
+        # Based on kontext.py structure: enabled, img1, img2, img3, sizing, reduce, metrics, dims_info
+        # So images should be at indices 1, 2, 3
+        for i in range(len(args)):
+            arg = args[i]
+            # Check if this is a PIL Image
+            if hasattr(arg, 'mode') and hasattr(arg, 'size'):
+                logger.debug(f"Found image at arg index {i}: {arg.size}")
+                kontext_images.append(arg)
+            elif isinstance(arg, Image.Image):
+                logger.debug(f"Found PIL Image at arg index {i}: {arg.size}")
+                kontext_images.append(arg)
+        
+        # If we didn't find images this way, try the expected positions
+        if not kontext_images and len(args) >= 4:
+            for i in [1, 2, 3]:
+                if i < len(args):
+                    img = args[i]
+                    if img is not None and hasattr(img, 'mode'):
+                        kontext_images.append(img)
+                    else:
+                        kontext_images.append(None)
+        
+        # Pad to ensure we have 3 slots
+        while len(kontext_images) < 3:
+            kontext_images.append(None)
+        
+        # Only keep first 3
+        kontext_images = kontext_images[:3]
+        
+        # Log what we found
+        image_count = sum(1 for img in kontext_images if img is not None)
+        logger.info(f"Found {image_count} kontext images from UI args")
+        
+        return kontext_images
+    
+    def analyze_image(self, image_index: int, *args):
+        """Analyze a kontext image"""
+        try:
+            logger.info(f"[DEBUG] analyze_image called for index {image_index}")
+            
+            # Get kontext images from UI args
+            kontext_images = self._get_kontext_images_from_ui(*args)
+            
+            if image_index >= len(kontext_images):
+                return f"❌ Invalid image index {image_index + 1}", {}
+            
+            image = kontext_images[image_index]
+            if image is None:
+                return f"❌ No image in slot {image_index + 1} - please load an image in Forge FluxKontext Pro first", {}
+            
+            logger.info(f"[DEBUG] Found image for analysis: {image.size}")
+            
+            # Analyze with our analyzer
+            if self.analyzer and hasattr(self.analyzer, 'analyze'):
+                analysis = self.analyzer.analyze(image)
+            else:
+                # Fallback analysis
+                analysis = {
+                    "size": f"{image.size[0]}x{image.size[1]}",
+                    "mode": image.mode,
+                    "description": "Basic analysis (Florence-2 not loaded)"
+                }
+            
+            # Format output - with proper type checking
+            output = f"✅ Image {image_index + 1}: {analysis.get('size', 'Unknown size')}\n"
+            
+            if 'description' in analysis:
+                output += f"Content: {analysis['description']}"
+            
+            # Safe handling of objects
+            if 'objects' in analysis:
+                objects = analysis['objects']
+                if isinstance(objects, list):
+                    # If it's a list, join first 5 items
+                    output += f"\nObjects: {', '.join(str(obj) for obj in objects[:5])}"
+                elif isinstance(objects, str):
+                    # If it's a string, use it directly
+                    output += f"\nObjects: {objects}"
+                else:
+                    # For any other type, convert to string
+                    output += f"\nObjects: {str(objects)}"
+            
+            if 'style' in analysis:
+                output += f"\nStyle: {analysis['style']}"
+            
+            logger.info(f"[DEBUG] Analysis complete for image {image_index + 1}")
+            return output, analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing image {image_index + 1}: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"❌ Error: {str(e)}", {}
     
     def ui(self, is_img2img):
         """Create Smart Assistant UI"""
@@ -237,46 +327,6 @@ class KontextAssistant(scripts.Script):
                 )
             
             # Event handlers
-            def analyze_image(image_index: int, *args):
-                """Analyze a kontext image"""
-                try:
-                    # Get kontext images
-                    kontext_images = self._find_kontext_images(*args)
-                    
-                    # Debug output
-                    logger.debug(f"Found {sum(1 for img in kontext_images if img is not None)} kontext images")
-                    
-                    if image_index >= len(kontext_images):
-                        return f"❌ Invalid image index {image_index + 1}", {}
-                    
-                    image = kontext_images[image_index]
-                    if image is None:
-                        return f"❌ No image in slot {image_index + 1} - please load an image in Forge FluxKontext Pro first", {}
-                    
-                    # Analyze with our analyzer
-                    if self.analyzer and hasattr(self.analyzer, 'analyze'):
-                        analysis = self.analyzer.analyze(image)
-                    else:
-                        # Fallback analysis
-                        analysis = {
-                            "size": f"{image.size[0]}x{image.size[1]}",
-                            "mode": image.mode,
-                            "description": "Basic analysis (Florence-2 not loaded)"
-                        }
-                    
-                    # Format output
-                    output = f"✅ Image {image_index + 1}: {analysis.get('size', 'Unknown size')}\n"
-                    if 'description' in analysis:
-                        output += f"Content: {analysis['description']}"
-                    
-                    return output, analysis
-                    
-                except Exception as e:
-                    logger.error(f"Error analyzing image {image_index + 1}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    return f"❌ Error: {str(e)}", {}
-            
             def generate_prompt(task_type, user_intent, use_analysis, *analysis_states):
                 """Generate FLUX.1 Kontext prompt"""
                 try:
@@ -313,7 +363,7 @@ class KontextAssistant(scripts.Script):
             # Connect analyze buttons
             for i, (btn, display) in enumerate(analysis_displays):
                 btn.click(
-                    fn=lambda *args, idx=i: analyze_image(idx, *args),
+                    fn=lambda *args, idx=i: self.analyze_image(idx, *args),
                     inputs=[],  # Will receive args from Forge
                     outputs=[display, analysis_data[i]]
                 )
@@ -344,6 +394,12 @@ class KontextAssistant(scripts.Script):
         # Log usage if debug enabled
         if show_debug and generated_prompt:
             logger.info(f"Smart Assistant used - Task: {task_type}, Generated: {generated_prompt[:50]}...")
+    
+    def process_before_every_sampling(self, p, *args):
+        """Hook to get access to all script args including kontext images"""
+        # This method will receive all args from all scripts
+        # We can use it to find kontext images
+        pass
     
     def postprocess(self, p, processed, *args):
         """Postprocess - nothing to do"""
