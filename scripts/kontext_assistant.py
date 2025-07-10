@@ -299,6 +299,7 @@ class KontextAssistant(scripts.Script):
             
             # Calculate analysis time
             analysis_time = time.time() - start_time
+            logger.info(f"Analysis completed in {analysis_time:.2f}s")
             
             # Cache the result
             self._analysis_cache.set(self._analysis_cache.get_image_key(image_index, cache_key), analysis)
@@ -473,6 +474,13 @@ class KontextAssistant(scripts.Script):
                     value=False
                 )
             
+            # Model status info
+            with gradio.Row():
+                model_status = gradio.Markdown(
+                    value=self._get_model_status(),
+                    elem_id="kontext_model_status"
+                )
+            
             # Event handlers
             def generate_prompt(task_type, user_intent, use_analysis, preservation_strength, *analysis_states):
                 """Generate FLUX.1 Kontext prompt"""
@@ -595,7 +603,8 @@ class KontextAssistant(scripts.Script):
                     results[0][0], results[0][1],  # Image 1
                     results[1][0], results[1][1],  # Image 2
                     results[2][0], results[2][1],  # Image 3
-                    status
+                    status,
+                    self._get_model_status()  # Update model status
                 ]
             
             def copy_description(analysis_data, idx):
@@ -650,7 +659,8 @@ class KontextAssistant(scripts.Script):
                     analysis_displays[0][1], analysis_data[0],  # Image 1
                     analysis_displays[1][1], analysis_data[1],  # Image 2
                     analysis_displays[2][1], analysis_data[2],  # Image 3
-                    analyze_status
+                    analyze_status,
+                    model_status  # Update model status
                 ]
             )
             
@@ -689,50 +699,171 @@ class KontextAssistant(scripts.Script):
         return [enabled, task_type, user_intent, generated_prompt, 
                 preservation_strength, use_analysis, show_detailed, show_debug, force_cpu]
     
+    def _get_model_status(self) -> str:
+        """Get current model status information"""
+        status_lines = ["### 🤖 Model Status\n"]
+        
+        try:
+            if hasattr(self, 'analyzer') and self.analyzer:
+                # Check JoyCaption status
+                if hasattr(self.analyzer, 'joycaption') and self.analyzer.joycaption:
+                    if self.analyzer.joycaption._initialized:
+                        status_lines.append("**JoyCaption**: ✅ Loaded (16GB HuggingFace model)")
+                    else:
+                        status_lines.append("**JoyCaption**: ⏳ Not loaded")
+                else:
+                    status_lines.append("**JoyCaption**: Not initialized")
+                
+                # Check Florence status
+                if hasattr(self.analyzer, 'florence') and self.analyzer.florence:
+                    if self.analyzer.florence.model is not None:
+                        status_lines.append("**Florence-2**: ✅ Loaded (770MB)")
+                    else:
+                        status_lines.append("**Florence-2**: ⏳ Not loaded")
+                else:
+                    status_lines.append("**Florence-2**: Not initialized")
+            else:
+                status_lines.append("**JoyCaption**: Not initialized (16GB HuggingFace model)")
+                status_lines.append("**Florence-2**: Not initialized (770MB)")
+        except Exception as e:
+            status_lines.append(f"**Status**: Error checking status - {str(e)}")
+        
+        return "\n".join(status_lines)
+    
     def _format_analysis_output(self, analysis: dict, show_detailed: bool = False) -> str:
         """Format analysis results into readable output"""
         output = ""
         
-        # Check if this is Florence-only mode for simple formatting
+        # Check which analyzers were used
         analyzers_used = analysis.get('analyzers_used', {})
         is_florence_only = analyzers_used.get('florence2', False) and not analyzers_used.get('joycaption', False)
+        is_joycaption_only = analyzers_used.get('joycaption', False) and not analyzers_used.get('florence2', False)
+        both_models = analyzers_used.get('florence2', False) and analyzers_used.get('joycaption', False)
         
-        # For Florence-only, use simple format
-        if is_florence_only:
-            # Just show description and basic technical data
-            if 'description' in analysis:
-                output += f"\n📝 Description: {analysis['description']}"
+        # Main description (without model labels)
+        if 'description' in analysis:
+            desc = DescriptionCleaner.clean(analysis['description'])
+            if desc:
+                output += f"📝 Description: {desc}"
+        
+        # Technical Data section
+        if 'technical_data' in analysis:
+            tech = analysis['technical_data']
+            if output:
+                output += "\n\n"
+            output += "🔬 Technical Data:"
             
-            # Technical data
-            if 'technical_data' in analysis:
-                tech = analysis['technical_data']
-                output += "\n\n🔬 Technical Data:"
-                if 'size' in tech:
-                    output += f"\n📐 Size: {tech['size']}"
-                if 'objects_with_positions' in tech and tech['objects_with_positions']:
-                    main_objects = tech['objects_with_positions'].get('main', [])
-                    if main_objects:
-                        output += f"\n🎯 Objects: {', '.join(main_objects[:5])}"
+            # Size and mode
+            if 'size' in tech and tech['size'] != 'unknown':
+                output += f"\n📐 Size: {tech['size']}"
+            if 'mode' in tech and tech['mode'] != 'unknown':
+                output += f"\n🎨 Mode: {tech['mode']}"
             
-            # Environment info from Florence
-            if 'environment' in analysis and isinstance(analysis['environment'], dict):
-                env = analysis['environment']
-                if env.get('setting') and env['setting'] != 'unknown':
-                    output += f"\n🌍 Setting: {env['setting']}"
-                if env.get('time_of_day') and env['time_of_day'] != 'unknown':
-                    output += f"\n🕐 Time: {env['time_of_day']}"
+            # Objects with positions
+            if 'objects_with_positions' in tech and isinstance(tech['objects_with_positions'], dict):
+                obj_data = tech['objects_with_positions']
+                if 'main' in obj_data and obj_data['main']:
+                    output += f"\n🎯 Objects: {', '.join(obj_data['main'][:8])}"
+                if 'counts' in obj_data and show_detailed:
+                    output += f"\n📊 Object counts: {obj_data['counts']}"
             
-            # Style from Florence (simple)
-            if 'style' in analysis and isinstance(analysis['style'], dict):
-                style = analysis['style']
-                if style.get('mood') and style['mood'] != 'unknown':
-                    output += f"\n💭 Mood: {style['mood']}"
+            # Text detected
+            if 'text_detected' in tech and tech['text_detected']:
+                text_items = tech['text_detected']
+                if isinstance(text_items, list) and text_items:
+                    output += f"\n📝 Text detected: {', '.join(text_items[:5])}"
+                    if len(text_items) > 5:
+                        output += f" (+{len(text_items) - 5} more)"
             
-            # Skip the rest of formatting for Florence-only
-        else:
-            # JoyCaption or combined mode - use full formatting
-            # Categories (from JoyCaption) FIRST
-            if 'categories' in analysis and isinstance(analysis['categories'], dict):
+            # Regions/areas
+            if 'regions' in tech and tech['regions'] and show_detailed:
+                output += f"\n🗺️ Regions: {len(tech['regions'])} detected"
+        
+        # Tags section with categories underneath
+        if 'tags' in analysis and isinstance(analysis['tags'], dict):
+            tags = analysis['tags']
+            if tags.get('danbooru'):
+                # Add spacing only if there's already content
+                if output:
+                    output += "\n\n"
+                output += "Tags (JoyCaption):"
+                output += f"\n🏷️ {tags['danbooru']}"
+                
+                # Categories underneath tags
+                if 'categories' in analysis and isinstance(analysis['categories'], dict):
+                    cats = analysis['categories']
+                    
+                    # Characters
+                    if cats.get('characters'):
+                        output += f"\n👤 Characters: {', '.join(cats['characters'][:5])}"
+                        
+                    # Objects
+                    if cats.get('objects'):
+                        output += f"\n🎯 Objects: {', '.join(cats['objects'][:8])}"
+                        
+                    # Colors
+                    if cats.get('colors'):
+                        output += f"\n🎨 Colors: {', '.join(cats['colors'][:6])}"
+                        
+                    # Materials
+                    if cats.get('materials') and show_detailed:
+                        output += f"\n🧱 Materials: {', '.join(cats['materials'][:5])}"
+                        
+                    # Environment
+                    if cats.get('environment'):
+                        env = cats['environment'] if isinstance(cats['environment'], str) else ', '.join(cats['environment'])
+                        if env:
+                            output += f"\n🌍 Environment: {env}"
+                            
+                    # Lighting
+                    if cats.get('lighting'):
+                        lighting = cats['lighting'] if isinstance(cats['lighting'], str) else ', '.join(cats['lighting'])
+                        if lighting:
+                            output += f"\n💡 Lighting: {lighting}"
+                            
+                    # Pose
+                    if cats.get('pose') and show_detailed:
+                        pose = cats['pose'] if isinstance(cats['pose'], str) else ', '.join(cats['pose'])
+                        if pose:
+                            output += f"\n🚶 Pose: {pose}"
+                            
+                    # Style
+                    if cats.get('style'):
+                        style = cats['style'] if isinstance(cats['style'], str) else ', '.join(cats['style'][:3])
+                        if style:
+                            output += f"\n🖼️ Style: {style}"
+                            
+                    # Mood
+                    if cats.get('mood'):
+                        mood = cats['mood'] if isinstance(cats['mood'], str) else ', '.join(cats['mood'][:3])
+                        if mood:
+                            output += f"\n💭 Mood: {mood}"
+                            
+                    # Text/Symbols
+                    if cats.get('text') and show_detailed:
+                        text = cats['text'] if isinstance(cats['text'], str) else ', '.join(cats['text'])
+                        if text:
+                            output += f"\n📝 Text/Symbols: {text}"
+                            
+                    # Genre
+                    if cats.get('genre'):
+                        genre = cats['genre'] if isinstance(cats['genre'], str) else ', '.join(cats['genre'])
+                        if genre:
+                            output += f"\n🎭 Genre: {genre}"
+                            
+                    # Subject Actions
+                    if cats.get('subjects_actions') and show_detailed:
+                        actions = cats['subjects_actions'] if isinstance(cats['subjects_actions'], str) else ', '.join(cats['subjects_actions'])
+                        if actions:
+                            output += f"\n🎬 Actions: {actions}"
+            
+            if tags.get('general') and show_detailed:
+                output += f"\n🔖 General tags: {tags['general']}"
+        elif 'categories' in analysis and isinstance(analysis['categories'], dict):
+            # JoyCaption mode but no tags - still show categories
+            if output:
+                output += "\n\n"
+            output += "Categories (JoyCaption):"
             cats = analysis['categories']
             
             # Characters
@@ -799,49 +930,8 @@ class KontextAssistant(scripts.Script):
                 if actions:
                     output += f"\n🎬 Actions: {actions}"
         
-        # Tags (from JoyCaption) - after categories
-        if 'tags' in analysis and isinstance(analysis['tags'], dict):
-            tags = analysis['tags']
-            if tags.get('danbooru'):
-                output += f"\n\n🏷️ Danbooru tags: {tags['danbooru']}"
-            if tags.get('general') and show_detailed:
-                output += f"\n🔖 General tags: {tags['general']}"
-        
-        # Descriptions - check if we have both models' descriptions
-        analyzers_used = analysis.get('analyzers_used', {})
-        both_models = analyzers_used.get('florence2', False) and analyzers_used.get('joycaption', False)
-        
-        if both_models:
-            # Show both descriptions when both models are used
-            if 'florence_description' in analysis:
-                florence_desc = DescriptionCleaner.clean(analysis['florence_description'])
-                if florence_desc:
-                    output += f"\n\n📝 Florence-2 Description: {florence_desc}"
-            
-            if 'joycaption_description' in analysis:
-                joy_desc = DescriptionCleaner.clean(analysis['joycaption_description'])
-                if joy_desc:
-                    output += f"\n\n📝 JoyCaption Description: {joy_desc}"
-        else:
-            # Single description for single model
-            if 'description' in analysis:
-                desc = DescriptionCleaner.clean(analysis['description'])
-                if desc:
-                    output += f"\n\n📝 Description: {desc}"
-        
-        # Technical data (from Florence)
-        if 'technical_data' in analysis and isinstance(analysis['technical_data'], dict):
-            tech = analysis['technical_data']
-            output += f"\n\n🔬 Technical Data:"
-            if tech.get('size'):
-                output += f"\n📐 Size: {tech['size']}"
-            if tech.get('text_detected'):
-                output += f"\n📝 Text detected: {', '.join(tech['text_detected'][:3])}"
-            if show_detailed and tech.get('object_counts'):
-                output += f"\n📊 Object counts: {', '.join(f'{k}:{v}' for k,v in list(tech['object_counts'].items())[:5])}"
-        
-        # Objects (combined)
-        elif 'objects' in analysis:
+        # Objects (combined) - only if not already shown in categories
+        if 'objects' in analysis and not ('categories' in analysis and analysis['categories'].get('objects')):
             objects = analysis['objects']
             if isinstance(objects, dict):
                 if 'combined' in objects and objects['combined']:
@@ -880,24 +970,23 @@ class KontextAssistant(scripts.Script):
             if composition != 'unknown' and show_detailed:
                 output += f"\n📸 Composition: {composition}"
         
-        # Analysis time and mode
+        # Analysis info at the end
+        if output:
+            output += "\n"
+        
+        # Analysis time
         if 'total_analysis_time' in analysis:
-            output += f"\n\n⏱️ Analysis time: {analysis['total_analysis_time']:.2f}s"
-        elif 'analysis_time' in analysis:
-            output += f"\n\n⏱️ Analysis time: {analysis['analysis_time']:.2f}s"
-            
-        # Analyzers used
-        if 'analyzers_used' in analysis:
-            used = analysis['analyzers_used']
+            output += f"\n⏱️ Analysis time: {analysis['total_analysis_time']:.2f}s"
+        
+        # Analysis mode
+        if analyzers_used:
             modes = []
-            if used.get('florence2'):
-                modes.append('Florence-2')
-            if used.get('joycaption'):
-                modes.append('JoyCaption')
+            if analyzers_used.get('florence2', False):
+                modes.append("Florence-2")
+            if analyzers_used.get('joycaption', False):
+                modes.append("JoyCaption")
             if modes:
-                output += f" | Using: {', '.join(modes)}"
-        elif 'analysis_mode' in analysis:
-            output += f" | Mode: {analysis['analysis_mode']}"
+                output += f"\n🤖 Mode: {' + '.join(modes)}"
         
         return output
 

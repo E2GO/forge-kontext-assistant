@@ -111,9 +111,6 @@ class JoyCaptionAnalyzer:
         self._initialized = False
         self._init_error = None
         
-        # GGUF support
-        self.gguf_analyzer = None
-        
         logger.info(f"JoyCaption analyzer created with model: {self.model_id} (GGUF: {use_gguf})")
     
     def _ensure_initialized(self):
@@ -127,18 +124,9 @@ class JoyCaptionAnalyzer:
         try:
             start_time = time.time()
             
-            # Use GGUF if requested
+            # Use GGUF if requested (currently disabled)
             if self.use_gguf:
-                logger.info("Loading JoyCaption GGUF model with automatic download...")
-                from ka_modules.joycaption_gguf import JoyCaptionGGUF
-                self.gguf_analyzer = JoyCaptionGGUF(
-                    quantization='Q6_K',
-                    device=self.device,
-                    force_cpu=self.device == 'cpu'
-                )
-                self._initialized = True
-                load_time = time.time() - start_time
-                logger.info(f"JoyCaption GGUF loaded successfully in {load_time:.1f}s")
+                raise RuntimeError("GGUF support has been disabled. Please use the full HuggingFace model.")
                 return
             
             # Regular HuggingFace model loading
@@ -620,11 +608,9 @@ class JoyCaptionAnalyzer:
         # Ensure model is loaded
         self._ensure_initialized()
         
-        # Use GGUF if available
-        if self.use_gguf and self.gguf_analyzer:
-            # Use the GGUF analyzer for the main mode
-            mode = 'booru_tags_medium' if modes and 'booru_tags_medium' in modes else 'descriptive_casual_medium'
-            return self.gguf_analyzer.analyze(image, mode=mode)
+        # GGUF support disabled
+        if self.use_gguf:
+            raise RuntimeError("GGUF support has been disabled. Please use the full HuggingFace model.")
         
         # Default modes - use exactly the same prompts as in the online interface
         if modes is None:
@@ -704,10 +690,6 @@ class JoyCaptionAnalyzer:
     
     def unload_model(self):
         """Unload model to free memory"""
-        if self.gguf_analyzer is not None:
-            self.gguf_analyzer.unload_model()
-            del self.gguf_analyzer
-            self.gguf_analyzer = None
         if self.model is not None:
             del self.model
             self.model = None

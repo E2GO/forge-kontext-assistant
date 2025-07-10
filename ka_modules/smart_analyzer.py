@@ -59,7 +59,7 @@ class SmartAnalyzer:
                 self.joycaption = JoyCaptionAnalyzer(
                     device=self.device,
                     force_cpu=self.force_cpu,
-                    use_gguf=True  # Use GGUF with automatic download
+                    use_gguf=False  # Use full HuggingFace model
                 )
             except Exception as e:
                 logger.warning(f"Failed to initialize JoyCaption: {e}")
