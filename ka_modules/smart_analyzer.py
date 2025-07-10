@@ -4,11 +4,11 @@ Smart Analyzer combining Florence-2 and JoyCaption
 
 import logging
 import time
+import threading
 from typing import Dict, Optional, Any, List
 from PIL import Image
 import concurrent.futures
 import torch
-import threading
 
 from ka_modules.image_analyzer import ImageAnalyzer
 from ka_modules.joycaption_analyzer import JoyCaptionAnalyzer
@@ -22,16 +22,18 @@ class SmartAnalyzer:
     Provides comprehensive image understanding for prompt generation
     """
     
-    def __init__(self, device='cuda', force_cpu=False):
+    def __init__(self, device='cuda', force_cpu=False, florence_model_type="base"):
         """
         Initialize smart analyzer with both models
         
         Args:
             device: Device for computation
             force_cpu: Force CPU usage
+            florence_model_type: Type of Florence-2 model ('base' or 'promptgen_v2')
         """
         self.device = device
         self.force_cpu = force_cpu
+        self.florence_model_type = florence_model_type
         
         # Initialize analyzers
         self.florence = None
@@ -49,15 +51,34 @@ class SmartAnalyzer:
     
     def _ensure_florence(self):
         """Lazy initialize Florence-2"""
+        # Check if we need to reload due to model type change
+        need_reload = False
         if self.florence is None:
+            need_reload = True
+        elif hasattr(self.florence, 'model_type') and self.florence.model_type != self.florence_model_type:
+            logger.info(f"Florence model type changed from {self.florence.model_type} to {self.florence_model_type}, reloading...")
+            need_reload = True
+            
+        if need_reload:
             with self._florence_lock:
                 # Double-check after acquiring lock
+                if self.florence is not None and hasattr(self.florence, 'model_type') and self.florence.model_type != self.florence_model_type:
+                    # Unload old model first
+                    logger.info(f"Unloading Florence-2 model: {self.florence.model_id}")
+                    self.florence.unload_model()
+                    self.florence = None
+                    
                 if self.florence is None:
-                    logger.info("Initializing Florence-2 analyzer...")
+                    logger.info(f"Initializing Florence-2 analyzer with model type: {self.florence_model_type}")
                     self.florence = ImageAnalyzer(
                         device=self.device,
-                        force_cpu=self.force_cpu
+                        force_cpu=self.force_cpu,
+                        model_type=self.florence_model_type
                     )
+                    logger.info(f"Florence-2 analyzer initialized with {self.florence.model_name}")
+                else:
+                    # Reset initialization if there was a previous error
+                    self.florence.reset_initialization()
     
     def _ensure_joycaption(self):
         """Lazy initialize JoyCaption"""
@@ -126,6 +147,7 @@ class SmartAnalyzer:
                 
             elif use_florence:
                 # Florence only
+                logger.info(f"Running Florence-only analysis with model type: {self.florence_model_type}")
                 florence_result = self._run_florence(image)
                 results.update(self._format_florence_only(florence_result))
                 
@@ -147,7 +169,23 @@ class SmartAnalyzer:
     def _run_florence(self, image: Image.Image) -> Dict[str, Any]:
         """Run Florence-2 analysis"""
         self._ensure_florence()
-        return self.florence.analyze(image, detailed=True)
+        # Log which model is being used
+        if self.florence:
+            logger.info(f"Running analysis with Florence-2 model: {self.florence.model_id}")
+            logger.info(f"Florence model type: {self.florence.model_type}")
+        else:
+            logger.error("Florence analyzer is None!")
+            return {}
+        
+        try:
+            result = self.florence.analyze(image, detailed=True)
+            logger.info(f"Florence analysis returned: {list(result.keys()) if result else 'None'}")
+            return result
+        except Exception as e:
+            logger.error(f"Florence analysis failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
     
     def _run_joycaption(self, image: Image.Image) -> Dict[str, Any]:
         """Run JoyCaption analysis"""

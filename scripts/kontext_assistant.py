@@ -18,8 +18,12 @@ from modules import scripts, shared
 from modules.ui_components import InputAccordion
 
 # Configure logging  
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("KontextAssistant")
+logger.setLevel(logging.INFO)
 
 # Setup imports for ka_modules
 script_dir = Path(__file__).parent
@@ -105,27 +109,47 @@ class KontextAssistant(scripts.Script):
         """Show in both txt2img and img2img tabs"""
         return scripts.AlwaysVisible
     
-    def _initialize_modules(self, force_cpu=False):
+    def _initialize_modules(self, force_cpu=False, florence_model_type="base"):
         """Lazy initialization of modules"""
-        if not self.initialized and MODULES_AVAILABLE:
+        # Always check settings, not just initialization status
+        if MODULES_AVAILABLE:
             try:
                 self.templates = PromptTemplates()
                 self.generator = PromptGenerator(self.templates)
                 
                 # Check if we need to recreate analyzer due to settings change
-                current_settings = (force_cpu,)
+                current_settings = (force_cpu, florence_model_type)
+                logger.info(f"Current settings: {current_settings}")
+                logger.info(f"Previous settings: {KontextAssistant._analyzer_settings}")
+                logger.info(f"Analyzer exists: {KontextAssistant._shared_analyzer is not None}")
+                
                 if (KontextAssistant._shared_analyzer is None or 
                     KontextAssistant._analyzer_settings != current_settings):
                     
-                    logger.info(f"Creating smart analyzer with settings: force_cpu={force_cpu}")
+                    logger.info(f"Creating smart analyzer with settings: force_cpu={force_cpu}, florence_model={florence_model_type}")
+                    
+                    # Unload old analyzer if it exists
+                    if KontextAssistant._shared_analyzer is not None:
+                        logger.info("Unloading previous analyzer models...")
+                        try:
+                            KontextAssistant._shared_analyzer.unload_models()
+                        except Exception as e:
+                            logger.warning(f"Error unloading previous analyzer: {e}")
+                        
+                        # Clear analysis cache when model changes
+                        if self._analysis_cache:
+                            logger.info("Clearing analysis cache due to model change")
+                            self._analysis_cache.clear()
                     
                     # Create new smart analyzer
                     device = "cpu" if force_cpu else "cuda"
+                    logger.info(f"Creating new SmartAnalyzer with florence_model_type={florence_model_type}")
                     KontextAssistant._shared_analyzer = SmartAnalyzer(
                         device=device,
-                        force_cpu=force_cpu
+                        force_cpu=force_cpu,
+                        florence_model_type=florence_model_type
                     )
-                    logger.info("Smart analyzer created (Florence-2 + JoyCaption)")
+                    logger.info(f"Smart analyzer created with {florence_model_type} Florence-2 model")
                     
                     KontextAssistant._analyzer_settings = current_settings
                 
@@ -245,8 +269,10 @@ class KontextAssistant(scripts.Script):
     
     def analyze_image(self, image_index: int, force_cpu: bool, 
                      use_florence: bool, use_joycaption: bool, 
-                     show_detailed: bool, *args):
+                     florence_model: str, show_detailed: bool, *args):
         """Analyze a kontext image with timing"""
+        logger.info(f"analyze_image called: image_index={image_index}, florence_model={florence_model}, use_florence={use_florence}, use_joycaption={use_joycaption}")
+        
         # Use lock to prevent concurrent analysis
         with KontextAssistant._analysis_lock:
             try:
@@ -255,7 +281,7 @@ class KontextAssistant(scripts.Script):
                 self.force_cpu = force_cpu
                 
                 # Reinitialize if needed
-                self._initialize_modules(force_cpu=force_cpu)
+                self._initialize_modules(force_cpu=force_cpu, florence_model_type=florence_model)
                 
                 # Get kontext images from UI args
                 kontext_images = self._get_kontext_images_from_ui(*args)
@@ -275,11 +301,14 @@ class KontextAssistant(scripts.Script):
                     logger.info(f"Image {image_index + 1} changed, clearing cached analysis")
             
                 # Check cache first
-                cache_key = f"analysis_{use_florence}_{use_joycaption}"
-                cached_result = self._analysis_cache.get(self._analysis_cache.get_image_key(image_index, cache_key))
+                cache_key = f"analysis_{use_florence}_{use_joycaption}_{florence_model}"
+                image_cache_key = self._analysis_cache.get_image_key(image_index, cache_key)
+                cached_result = self._analysis_cache.get(image_cache_key)
                 if cached_result:
-                    logger.info(f"Using cached analysis for image {image_index + 1}")
+                    logger.info(f"Using cached analysis for image {image_index + 1} (key: {cache_key})")
                     return self._format_analysis_output(cached_result, show_detailed), cached_result
+                else:
+                    logger.info(f"No cache found for image {image_index + 1} (key: {cache_key})")
             
                 # Skip progress for now - might be causing the hang
                 # Previously had progress callback here but removed it
@@ -289,6 +318,10 @@ class KontextAssistant(scripts.Script):
                     return "❌ Please select at least one analysis method", {}
                 
                 try:
+                    # Log current analyzer state
+                    if self.analyzer and hasattr(self.analyzer, 'florence_model_type'):
+                        logger.info(f"Current SmartAnalyzer florence_model_type: {self.analyzer.florence_model_type}")
+                    
                     # Run analysis with SmartAnalyzer
                     analysis = self.analyzer.analyze(image, use_florence=use_florence, use_joycaption=use_joycaption)
                     
@@ -349,14 +382,26 @@ class KontextAssistant(scripts.Script):
                 # Analysis settings - above analysis fields
                 with gradio.Row():
                     use_florence = gradio.Checkbox(
-                        label="Use Florence-2 (Generate simple description). Fast mode",
-                        value=False,
-                        info="Technical analysis: object detection with coordinates, text reading"
+                        label="Use Florence-2 (Fast mode)",
+                        value=True,
+                        info="Technical analysis: object detection, tags, prompt generation"
                     )
                     use_joycaption = gradio.Checkbox(
-                        label="Use JoyCaption (Generate advanced description and tags). Slow mode",
-                        value=True,
-                        info="Artistic analysis: detailed descriptions, Danbooru tags, style detection (8GB model)"
+                        label="Use JoyCaption (Slow mode, 16GB)",
+                        value=False,
+                        info="Artistic analysis: detailed descriptions, Danbooru tags, style detection"
+                    )
+                
+                # Florence model selection
+                with gradio.Row():
+                    florence_model = gradio.Dropdown(
+                        label="Florence-2 Model",
+                        choices=[
+                            ("Florence-2 Base (Microsoft)", "base"),
+                            ("Florence-2 PromptGen v2.0 (Recommended)", "promptgen_v2")
+                        ],
+                        value="promptgen_v2",
+                        info="PromptGen v2.0 is optimized for AI art prompt generation"
                     )
             
             
@@ -488,6 +533,11 @@ class KontextAssistant(scripts.Script):
                     value=self._get_model_status(),
                     elem_id="kontext_model_status"
                 )
+                unload_models_btn = gradio.Button(
+                    "🗑️ Unload Models",
+                    variant="secondary",
+                    size="sm"
+                )
             
             # Event handlers
             def generate_prompt(task_type, user_intent, use_analysis, preservation_strength, *analysis_states):
@@ -527,18 +577,18 @@ class KontextAssistant(scripts.Script):
             def analyze_all_images(*args):
                 """Analyze all kontext images with progress updates"""
                 results = []
-                force_cpu, use_florence, use_joycaption, show_detailed = args[:4]
+                force_cpu, use_florence, use_joycaption, florence_model, show_detailed = args[:5]
                 
-                logger.info(f"analyze_all_images called with use_florence={use_florence}, use_joycaption={use_joycaption}")
+                logger.info(f"analyze_all_images called with use_florence={use_florence}, use_joycaption={use_joycaption}, florence_model={florence_model}")
                 
                 # Get current images to check for changes
-                current_images = self._get_kontext_images_from_ui(*args[4:])
+                current_images = self._get_kontext_images_from_ui(*args[5:])
                 
                 # Count images to analyze
                 images_to_analyze = sum(1 for img in current_images if img is not None)
                 if images_to_analyze == 0:
                     status = "❌ No images to analyze"
-                    return ["", {}, "", {}, "", {}, status]
+                    return ["", {}, "", {}, "", {}, status, self._get_model_status()]
                 
                 # First pass: check all images for changes and clear if needed
                 for i in range(3):
@@ -568,7 +618,7 @@ class KontextAssistant(scripts.Script):
                             # Analyze with progress info
                             result_text, result_data = self.analyze_image(
                                 i, force_cpu, use_florence, use_joycaption,
-                                show_detailed, *args[4:]
+                                florence_model, show_detailed, *args[5:]
                             )
                             
                             # Add progress info to result
@@ -594,16 +644,28 @@ class KontextAssistant(scripts.Script):
                 status = f"✅ All {images_to_analyze} images analyzed successfully!"
                 
                 # Unload models after analysis to free memory for generation
+                # TEMPORARILY DISABLED: Models stay in memory for faster subsequent analysis
+                # Uncomment if you need to free memory for generation
+                """
                 if hasattr(self, 'analyzer') and self.analyzer:
                     try:
                         logger.info("Unloading analyzer models to free GPU memory...")
                         self.analyzer.unload_models()
+                        # Also reset the shared analyzer so it will be recreated next time
+                        KontextAssistant._shared_analyzer = None
+                        KontextAssistant._analyzer_settings = None
                         logger.info("Analyzer models unloaded successfully")
                     except Exception as e:
                         logger.warning(f"Failed to unload models: {e}")
                     finally:
+                        # Force cleanup
+                        import gc
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                         # Add a small delay to ensure cleanup completes
                         time.sleep(0.5)
+                """
                 
                 return [
                     results[0][0], results[0][1],  # Image 1
@@ -625,10 +687,10 @@ class KontextAssistant(scripts.Script):
             # Function to check for removed images and clear analysis
             def check_and_clear_removed_images(*args):
                 """Check all slots and clear analysis for removed images"""
-                force_cpu, use_florence, use_joycaption, show_detailed = args[:4]
+                force_cpu, use_florence, use_joycaption, florence_model, show_detailed = args[:5]
                 
                 # Get current images
-                current_images = self._get_kontext_images_from_ui(*args[4:])
+                current_images = self._get_kontext_images_from_ui(*args[5:])
                 
                 results = []
                 for i in range(3):
@@ -646,21 +708,25 @@ class KontextAssistant(scripts.Script):
             
             # Connect individual analyze buttons
             for i, (btn, display) in enumerate(analysis_displays):
+                def analyze_wrapper(*args, idx=i):
+                    logger.info(f"Analyze button {idx} clicked with args: force_cpu={args[0]}, use_florence={args[1]}, use_joycaption={args[2]}, florence_model={args[3]}, show_detailed={args[4]}")
+                    return self.analyze_image(idx, args[0], args[1], args[2], args[3], args[4], *args[5:])
+                
                 btn.click(
-                    fn=lambda *args, idx=i: self.analyze_image(idx, args[0], args[1], args[2], args[3], *args[4:]),
-                    inputs=[force_cpu, use_florence, use_joycaption, show_detailed],
+                    fn=analyze_wrapper,
+                    inputs=[force_cpu, use_florence, use_joycaption, florence_model, show_detailed],
                     outputs=[display, analysis_data[i]]
                 ).then(
                     # After analysis, check all slots for removed images
                     fn=check_and_clear_removed_images,
-                    inputs=[force_cpu, use_florence, use_joycaption, show_detailed],
+                    inputs=[force_cpu, use_florence, use_joycaption, florence_model, show_detailed],
                     outputs=[item for pair in [(display, data) for display, data in zip([d[1] for d in analysis_displays], analysis_data)] for item in pair]
                 )
             
             # Connect analyze all button
             analyze_all_btn.click(
                 fn=analyze_all_images,
-                inputs=[force_cpu, use_florence, use_joycaption, show_detailed],
+                inputs=[force_cpu, use_florence, use_joycaption, florence_model, show_detailed],
                 outputs=[
                     analysis_displays[0][1], analysis_data[0],  # Image 1
                     analysis_displays[1][1], analysis_data[1],  # Image 2
@@ -692,9 +758,42 @@ class KontextAssistant(scripts.Script):
             
             # Add load event to set initial states
             enabled.change(
-                fn=lambda x: (False, True) if x else (False, True),
+                fn=lambda x: (True, False) if x else (True, False),
                 inputs=[enabled],
                 outputs=[use_florence, use_joycaption]
+            )
+            
+            # Show/hide Florence model dropdown based on checkbox
+            use_florence.change(
+                fn=lambda x: gradio.update(visible=x),
+                inputs=[use_florence],
+                outputs=[florence_model]
+            )
+            
+            # Unload models manually
+            def unload_models():
+                """Manually unload all models to free memory"""
+                if hasattr(KontextAssistant, '_shared_analyzer') and KontextAssistant._shared_analyzer:
+                    try:
+                        logger.info("Manually unloading analyzer models...")
+                        KontextAssistant._shared_analyzer.unload_models()
+                        KontextAssistant._shared_analyzer = None
+                        KontextAssistant._analyzer_settings = None
+                        
+                        import gc
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        
+                        return "✅ Models unloaded successfully!"
+                    except Exception as e:
+                        return f"❌ Failed to unload models: {str(e)}"
+                else:
+                    return "ℹ️ No models loaded"
+                    
+            unload_models_btn.click(
+                fn=unload_models,
+                outputs=[analyze_status]
             )
             
             # If we can access kontext image components, add change handlers
@@ -703,7 +802,7 @@ class KontextAssistant(scripts.Script):
         
         # Return UI components for Forge
         return [enabled, task_type, user_intent, generated_prompt, 
-                preservation_strength, use_analysis, show_detailed, show_debug, force_cpu]
+                preservation_strength, use_analysis, show_detailed, show_debug, force_cpu, florence_model]
     
     def _get_model_status(self) -> str:
         """Get current model status information"""
@@ -723,9 +822,12 @@ class KontextAssistant(scripts.Script):
                 # Check Florence status
                 if hasattr(self.analyzer, 'florence') and self.analyzer.florence:
                     if self.analyzer.florence.model is not None:
-                        status_lines.append("**Florence-2**: ✅ Loaded (770MB)")
+                        model_name = self.analyzer.florence.model_name
+                        size = "~1GB" if self.analyzer.florence.model_type == "promptgen_v2" else "770MB"
+                        status_lines.append(f"**{model_name}**: ✅ Loaded ({size})")
                     else:
-                        status_lines.append("**Florence-2**: ⏳ Not loaded")
+                        model_name = getattr(self.analyzer.florence, 'model_name', 'Florence-2')
+                        status_lines.append(f"**{model_name}**: ⏳ Not loaded")
                 else:
                     status_lines.append("**Florence-2**: Not initialized")
             else:
@@ -760,10 +862,34 @@ class KontextAssistant(scripts.Script):
             if desc:
                 desc = DescriptionCleaner.clean(desc)
                 if desc:
-                    output += f"📝 Description (Florence-2):\n{desc}"
+                    model_name = "Florence-2 PromptGen" if analysis.get('model_type') == 'promptgen_v2' else "Florence-2"
+                    output += f"📝 Description ({model_name}):\n{desc}"
+        
+        # Tags from Florence PromptGen
+        if analyzers_used.get('florence2', False) and is_florence_only and 'tags' in analysis and isinstance(analysis['tags'], dict):
+            tags = analysis['tags']
+            if tags.get('danbooru'):
+                if output:
+                    output += "\n\n"
+                output += "🏷️ Tags (Florence-2 PromptGen):\n"
+                output += f"{tags['danbooru']}"
+        
+        # Mixed caption from PromptGen
+        if analyzers_used.get('florence2', False) and is_florence_only and 'mixed_caption' in analysis:
+            if output:
+                output += "\n\n"
+            output += "🎨 Mixed Caption (Optimized for Flux):\n"
+            output += analysis['mixed_caption']
+        
+        # Composition analysis from PromptGen
+        if analyzers_used.get('florence2', False) and is_florence_only and 'composition_analysis' in analysis and show_detailed:
+            if output:
+                output += "\n\n"
+            output += "📸 Composition Analysis:\n"
+            output += analysis['composition_analysis']
         
         # Tags section with categories underneath - ONLY from JoyCaption
-        if analyzers_used.get('joycaption', False) and 'tags' in analysis and isinstance(analysis['tags'], dict):
+        elif analyzers_used.get('joycaption', False) and 'tags' in analysis and isinstance(analysis['tags'], dict):
             tags = analysis['tags']
             if tags.get('danbooru'):
                 # Add spacing only if there's already content
@@ -983,7 +1109,7 @@ class KontextAssistant(scripts.Script):
         return output
 
     def process(self, p, enabled, task_type, user_intent, generated_prompt,
-                preservation_strength, use_analysis, show_detailed, show_debug, force_cpu):
+                preservation_strength, use_analysis, show_detailed, show_debug, force_cpu, florence_model):
         """Process - we don't modify the generation, just provide UI"""
         if not enabled:
             return

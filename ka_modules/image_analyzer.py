@@ -4,6 +4,7 @@ Supports RTX 4090/5090 with automatic fallback to mock mode
 """
 
 import logging
+import warnings
 from typing import Dict, Any, Optional, List, Union
 from PIL import Image
 import torch
@@ -11,6 +12,10 @@ from pathlib import Path
 import json
 import time
 from functools import lru_cache
+
+# Suppress the Florence2LanguageForConditionalGeneration compatibility warning
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+warnings.filterwarnings("ignore", message=".*Florence2LanguageForConditionalGeneration.*")
 
 # Fix for Python 3.10 collections compatibility
 import collections
@@ -30,19 +35,34 @@ except ImportError:
 # Configure logging
 logger = logging.getLogger(__name__)
 
-class SmartImageAnalyzer:
+class ImageAnalyzer:
     """
     Smart analyzer that automatically handles GPU compatibility issues
     Falls back to mock mode when Florence-2 fails
     """
     
-    def __init__(self, device: Optional[str] = None, force_cpu: bool = False):
+    # Available Florence-2 models
+    FLORENCE_MODELS = {
+        "base": {
+            "id": "microsoft/Florence-2-large",
+            "name": "Florence-2 Base (Microsoft)",
+            "description": "General-purpose vision model"
+        },
+        "promptgen_v2": {
+            "id": "MiaoshouAI/Florence-2-large-PromptGen-v2.0",
+            "name": "Florence-2 PromptGen v2.0",
+            "description": "Optimized for prompt generation (Recommended)"
+        }
+    }
+    
+    def __init__(self, device: Optional[str] = None, force_cpu: bool = False, model_type: str = "base"):
         """
         Initialize smart image analyzer
         
         Args:
             device: Device to run model on ('cuda', 'cpu', or None for auto)
             force_cpu: Force CPU mode for compatibility
+            model_type: Type of Florence-2 model to use ('base' or 'promptgen_v2')
         """
         self.model = None
         self.processor = None
@@ -54,7 +74,13 @@ class SmartImageAnalyzer:
         self._init_error = None
         
         # Model configuration
-        self.model_id = "microsoft/Florence-2-large"
+        self.model_type = model_type
+        if model_type not in self.FLORENCE_MODELS:
+            logger.warning(f"Unknown model type {model_type}, using base")
+            self.model_type = "base"
+        
+        self.model_id = self.FLORENCE_MODELS[self.model_type]["id"]
+        self.model_name = self.FLORENCE_MODELS[self.model_type]["name"]
         self.cache_dir = Path.home() / ".cache" / "kontext_assistant"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
@@ -81,10 +107,9 @@ class SmartImageAnalyzer:
                 logger.warning(f"{gpu_name} detected - enabling compatibility mode")
                 self.gpu_compatibility_mode = True
                 
-                # Force CPU for these GPUs unless explicitly set
-                if self.device is None and not self.force_cpu:
-                    logger.info("Auto-enabling CPU mode for compatibility")
-                    self.force_cpu = True
+                # Don't force CPU anymore - RTX 5090 should work fine with proper settings
+                # Users can still manually set force_cpu=True if needed
+                logger.info(f"Compatibility mode enabled for {gpu_name}, but GPU will still be used")
                     
         except Exception as e:
             logger.warning(f"Could not detect GPU: {e}")
@@ -94,6 +119,7 @@ class SmartImageAnalyzer:
     def _ensure_initialized(self, progress_callback=None):
         """Lazy loading of Florence-2 model with automatic fallback"""
         if self._initialized:
+            logger.debug(f"Model already initialized with {self.model_type} ({self.model_id})")
             return
             
         if self._init_attempted and self._init_error:
@@ -101,6 +127,7 @@ class SmartImageAnalyzer:
             raise RuntimeError(f"Previous init failed: {self._init_error}")
             
         self._init_attempted = True
+        logger.info(f"Initializing Florence-2 {self.model_type} model: {self.model_id}")
         
         if not TRANSFORMERS_AVAILABLE:
             self._init_error = "Transformers not available"
@@ -108,16 +135,19 @@ class SmartImageAnalyzer:
             raise RuntimeError("Transformers library is required for Florence-2")
             
         try:
-            logger.info("Attempting to load Florence-2 model...")
+            logger.info(f"Attempting to load Florence-2 model: {self.model_id}")
+            logger.info(f"Model type: {self.model_type}, Model name: {self.model_name}")
             start_time = time.time()
             
             # Determine device
             if self.device is None:
-                if self.force_cpu or self.gpu_compatibility_mode:
+                if self.force_cpu:
                     self.device = "cpu"
-                    logger.info("Using CPU mode for compatibility")
+                    logger.info("Using CPU mode (forced)")
                 else:
                     self.device = "cuda" if torch.cuda.is_available() else "cpu"
+                    if self.gpu_compatibility_mode and self.device == "cuda":
+                        logger.info(f"Using GPU with compatibility mode for {self.detected_gpu}")
             
             if progress_callback:
                 progress_callback("Loading Florence-2 model...", 0.1)
@@ -131,6 +161,11 @@ class SmartImageAnalyzer:
                 trust_remote_code=True,
                 cache_dir=self.cache_dir
             )
+            
+            # Log processor info for debugging
+            logger.info(f"Processor type: {type(self.processor)}")
+            if hasattr(self.processor, 'tokenizer'):
+                logger.info(f"Tokenizer type: {type(self.processor.tokenizer)}")
             
             # Load model with appropriate dtype
             if progress_callback:
@@ -174,6 +209,12 @@ class SmartImageAnalyzer:
             
             load_time = time.time() - start_time
             logger.info(f"Florence-2 loaded successfully in {load_time:.1f}s on {self.device}")
+            logger.info(f"Model type: {self.model_type}, Model ID: {self.model_id}")
+            
+            # Test the model immediately
+            if self.model_type == "promptgen_v2":
+                logger.info("Testing PromptGen v2.0 model...")
+                self._test_inference()
             
             if progress_callback:
                 progress_callback("Model loaded successfully!", 1.0)
@@ -207,24 +248,101 @@ class SmartImageAnalyzer:
         analysis['size'] = f"{image.width}x{image.height}"
         analysis['mode'] = image.mode
         analysis['analysis_mode'] = 'florence2'
+        analysis['model_type'] = self.model_type
         
-        # Get detailed caption
-        caption_result = self._run_florence_task(image, "<DETAILED_CAPTION>")
-        if caption_result:
-            raw_description = caption_result.get('<DETAILED_CAPTION>', 'No description available')
-            analysis['description'] = self._clean_description(raw_description)
-        
-        # Get objects with bounding boxes
-        od_result = self._run_florence_task(image, "<OD>")
-        if od_result and '<OD>' in od_result:
-            objects_data = od_result['<OD>']
-            analysis['objects'] = self._process_objects(objects_data)
-        
-        # Analyze regions for composition
-        if detailed:
-            region_result = self._run_florence_task(image, "<DENSE_REGION_CAPTION>")
-            if region_result and '<DENSE_REGION_CAPTION>' in region_result:
-                analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
+        # Different analysis based on model type
+        if self.model_type == "promptgen_v2":
+            # PromptGen v2.0 specific analysis
+            
+            # Get detailed caption using PromptGen's best instruction
+            caption_result = self._run_florence_task(image, "<MORE_DETAILED_CAPTION>")
+            logger.info(f"PromptGen caption_result type: {type(caption_result)}")
+            logger.info(f"PromptGen caption_result: {caption_result}")
+            
+            if caption_result:
+                # Check the structure of the result
+                if isinstance(caption_result, dict):
+                    logger.info(f"Caption result keys: {list(caption_result.keys())}")
+                    # Try to get the result from the task key
+                    raw_description = caption_result.get('<MORE_DETAILED_CAPTION>', '')
+                    if not raw_description:
+                        # Try without angle brackets
+                        raw_description = caption_result.get('MORE_DETAILED_CAPTION', '')
+                    if not raw_description and len(caption_result) == 1:
+                        # Get the first value if there's only one key
+                        raw_description = list(caption_result.values())[0]
+                else:
+                    raw_description = str(caption_result)
+                
+                logger.info(f"PromptGen raw_description: {raw_description[:500]}...")
+                analysis['description'] = self._clean_description(raw_description)
+            
+            # Get Danbooru tags
+            tags_result = self._run_florence_task(image, "<GENERATE_TAGS>")
+            logger.info(f"Tags result type: {type(tags_result)}")
+            logger.info(f"Tags result: {tags_result}")
+            
+            if tags_result:
+                # Extract tags text
+                if isinstance(tags_result, dict):
+                    tags_text = tags_result.get('<GENERATE_TAGS>', '')
+                    if not tags_text:
+                        tags_text = tags_result.get('GENERATE_TAGS', '')
+                    if not tags_text and len(tags_result) == 1:
+                        tags_text = list(tags_result.values())[0]
+                else:
+                    tags_text = str(tags_result)
+                
+                logger.info(f"Tags text: {tags_text}")
+                
+                if tags_text:
+                    analysis['tags'] = {
+                        'danbooru': tags_text,
+                        'general': tags_text
+                    }
+            
+            # Get mixed caption for Flux compatibility
+            if detailed:
+                mixed_result = self._run_florence_task(image, "<MIXED_CAPTION_PLUS>")
+                if mixed_result:
+                    if isinstance(mixed_result, dict):
+                        mixed_text = mixed_result.get('<MIXED_CAPTION_PLUS>', '')
+                        if not mixed_text:
+                            mixed_text = mixed_result.get('MIXED_CAPTION_PLUS', '')
+                        if not mixed_text and len(mixed_result) == 1:
+                            mixed_text = list(mixed_result.values())[0]
+                        analysis['mixed_caption'] = mixed_text
+                    else:
+                        analysis['mixed_caption'] = str(mixed_result)
+                
+                # Get composition analysis
+                analyze_result = self._run_florence_task(image, "<ANALYZE>")
+                if analyze_result:
+                    if isinstance(analyze_result, str):
+                        analysis['composition_analysis'] = analyze_result
+                    else:
+                        analysis['composition_analysis'] = analyze_result.get('<ANALYZE>', '')
+                    
+        else:
+            # Base Florence-2 analysis (existing code)
+            
+            # Get detailed caption
+            caption_result = self._run_florence_task(image, "<DETAILED_CAPTION>")
+            if caption_result:
+                raw_description = caption_result.get('<DETAILED_CAPTION>', 'No description available')
+                analysis['description'] = self._clean_description(raw_description)
+            
+            # Get objects with bounding boxes
+            od_result = self._run_florence_task(image, "<OD>")
+            if od_result and '<OD>' in od_result:
+                objects_data = od_result['<OD>']
+                analysis['objects'] = self._process_objects(objects_data)
+            
+            # Analyze regions for composition
+            if detailed:
+                region_result = self._run_florence_task(image, "<DENSE_REGION_CAPTION>")
+                if region_result and '<DENSE_REGION_CAPTION>' in region_result:
+                    analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
         
         # Get detailed objects analysis
         detailed_objects = self._extract_detailed_objects(
@@ -290,6 +408,8 @@ class SmartImageAnalyzer:
         """
         Analyze image with automatic fallback to mock if needed
         """
+        logger.info(f"ImageAnalyzer.analyze called with model_type: {self.model_type}, model_id: {self.model_id}")
+        
         # Ensure model is loaded
         self._ensure_initialized()
         
@@ -304,7 +424,20 @@ class SmartImageAnalyzer:
     def _run_florence_task(self, image: Image.Image, task: str) -> Optional[Dict]:
         """Run a specific Florence-2 task with proper error handling"""
         try:
+            logger.info(f"Running Florence task: {task} with model type: {self.model_type}")
+            
+            # Log image info
+            logger.info(f"Image size: {image.size}, mode: {image.mode}")
+            
             inputs = self.processor(text=task, images=image, return_tensors="pt")
+            
+            # Log input info
+            logger.info(f"Input keys: {list(inputs.keys())}")
+            for k, v in inputs.items():
+                if hasattr(v, 'shape'):
+                    logger.info(f"  {k}: shape={v.shape}, dtype={v.dtype}")
+                else:
+                    logger.info(f"  {k}: type={type(v)}")
             
             # Move to device and ensure dtype compatibility
             if self.device == "cuda":
@@ -322,28 +455,74 @@ class SmartImageAnalyzer:
                 inputs = device_inputs
             
             with torch.no_grad():
-                # Deterministic parameters for accuracy
-                generated_ids = self.model.generate(
-                    input_ids=inputs["input_ids"],
-                    pixel_values=inputs["pixel_values"],
-                    max_new_tokens=1024,     # Enough for full description
-                    min_new_tokens=20,       # Minimum for basic description
-                    do_sample=False,         # Disable randomness for accuracy
-                    num_beams=5,            # More beams for better quality
-                    repetition_penalty=1.1,  # Small penalty for repetitions
-                    length_penalty=1.0,      # Neutral length
-                    early_stopping=True      # Stop when complete
+                # Different parameters based on model type
+                if self.model_type == "promptgen_v2":
+                    # PromptGen v2.0 optimized parameters
+                    generated_ids = self.model.generate(
+                        input_ids=inputs["input_ids"],
+                        pixel_values=inputs["pixel_values"],
+                        max_new_tokens=1024,     # Recommended for PromptGen
+                        num_beams=3,            # Recommended 3 beams for PromptGen
+                        do_sample=False,         # Deterministic
+                        early_stopping=True      # Stop when complete
+                    )
+                else:
+                    # Base Florence-2 parameters
+                    generated_ids = self.model.generate(
+                        input_ids=inputs["input_ids"],
+                        pixel_values=inputs["pixel_values"],
+                        max_new_tokens=1024,     # Enough for full description
+                        min_new_tokens=20,       # Minimum for basic description
+                        do_sample=False,         # Disable randomness for accuracy
+                        num_beams=5,            # More beams for better quality
+                        repetition_penalty=1.1,  # Small penalty for repetitions
+                        length_penalty=1.0,      # Neutral length
+                        early_stopping=True      # Stop when complete
+                    )
+            
+            # First decode with special tokens to debug
+            generated_text_with_special = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+            
+            # Also decode without special tokens for comparison
+            generated_text_clean = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            
+            logger.info(f"Generated text WITH special tokens: {generated_text_with_special[:200]}...")
+            logger.info(f"Generated text WITHOUT special tokens: {generated_text_clean[:200]}...")
+            
+            # Use the version with special tokens for processing
+            generated_text = generated_text_with_special
+            
+            # Use the standard post-processing for all models including PromptGen
+            try:
+                parsed_answer = self.processor.post_process_generation(
+                    generated_text,
+                    task=task,
+                    image_size=(image.width, image.height)
                 )
-            
-            generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-            
-            parsed_answer = self.processor.post_process_generation(
-                generated_text,
-                task=task,
-                image_size=(image.width, image.height)
-            )
-            
-            return parsed_answer
+                
+                # Log the parsed answer
+                logger.info(f"Parsed answer for {task}: {parsed_answer}")
+                if isinstance(parsed_answer, dict):
+                    for k, v in parsed_answer.items():
+                        if isinstance(v, str):
+                            logger.info(f"  {k}: {v[:200]}...")
+                        else:
+                            logger.info(f"  {k}: {type(v)}")
+                
+                return parsed_answer
+                
+            except Exception as e:
+                logger.warning(f"Standard post-processing failed: {e}, trying alternative method")
+                
+                # Fallback for PromptGen if standard processing fails
+                if self.model_type == "promptgen_v2":
+                    logger.info(f"Using fallback processing for PromptGen")
+                    logger.info(f"Clean generated text: {generated_text_clean[:500]}...")
+                    
+                    # Return the clean text as a simple dict
+                    return {task: generated_text_clean}
+                else:
+                    raise
             
         except Exception as e:
             logger.error(f"Error in Florence task {task}: {e}")
@@ -755,12 +934,19 @@ class SmartImageAnalyzer:
             del self.processor
             self.processor = None
         self._initialized = False
+        self._init_attempted = False
+        self._init_error = None
         
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         logger.info("Model unloaded")
+    
+    def reset_initialization(self):
+        """Reset initialization flags to allow retry after error"""
+        self._init_attempted = False
+        self._init_error = None
+        logger.info("Initialization flags reset - model can be retried")
 
 
-# Backward compatibility
-ImageAnalyzer = SmartImageAnalyzer
+# Class is already named ImageAnalyzer, no alias needed

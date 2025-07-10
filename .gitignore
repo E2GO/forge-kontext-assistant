@@ -4,14 +4,20 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.egg
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 venv/
 env/
 ENV/
+.env
+.venv
 
 # IDE
 .vscode/
@@ -19,45 +25,81 @@ ENV/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Test outputs
 test_*.log
 *.test
+test_outputs/
+pytest.ini
 
-# Model cache
-models/
-model_cache/
-*.safetensors
-*.ckpt
-*.pth
+# Model files - exclude large binary files but keep directory structure
+models/JoyCaption/*.gguf
+models/JoyCaption/*.bin
+models/JoyCaption/*.safetensors
+models/JoyCaption/*.pth
+# But don't ignore the models directory itself
+!models/
+!models/JoyCaption/
 
 # Temporary files
 tmp/
 temp/
 *.tmp
 *.bak
+*.old
+*.cache
 
-# Archive folder (for old files)
-archive/
+# Archive folder (keep docs/archive)
+/archive/
 
 # Local test images
 test_images/
 sample_images/
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
 
-# Documentation drafts
+# Documentation drafts and temporary reports
 *_DRAFT.md
 *_WIP.md
 *_TODO.md
+*_REPORT.md
+*_FIX.md
+*_INSTRUCTIONS.md
+*_ANALYSIS.md
+# Keep important docs
+!README.md
+!docs/*.md
+!IMPLEMENTATION_STATUS.md
 
-# Debug files
+# Debug and test files
 debug_*.py
-debug_*.log
+test_*.py
+simple_*.py
+check_*.py
+diagnose_*.py
+quick_*.py
+*_simulator.py
+*_test.py
+# Keep official test files
+!tests/test_*.py
+!webui_model_test.py
+
+# Temporary batch/shell scripts
+test_*.bat
+test_*.sh
+run_*.bat
+# Keep official scripts
+!run_tests.sh
+
+# Session and log files
+2025-*.txt
+*.log
+
+# Compiled extensions
+*.pyd
+*.dll
