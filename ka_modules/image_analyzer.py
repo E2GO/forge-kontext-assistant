@@ -36,21 +36,19 @@ class SmartImageAnalyzer:
     Falls back to mock mode when Florence-2 fails
     """
     
-    def __init__(self, device: Optional[str] = None, force_mock: bool = False, force_cpu: bool = False):
+    def __init__(self, device: Optional[str] = None, force_cpu: bool = False):
         """
         Initialize smart image analyzer
         
         Args:
             device: Device to run model on ('cuda', 'cpu', or None for auto)
-            force_mock: Force mock mode regardless of availability
             force_cpu: Force CPU mode for compatibility
         """
         self.model = None
         self.processor = None
         self.device = device
-        self.force_mock = force_mock
         self.force_cpu = force_cpu
-        self.use_mock = force_mock
+        # Mock mode removed - always use real analysis
         self._initialized = False
         self._init_attempted = False
         self._init_error = None
@@ -64,8 +62,7 @@ class SmartImageAnalyzer:
         self.gpu_compatibility_mode = False
         self.detected_gpu = None
         
-        if not force_mock:
-            self._detect_gpu_compatibility()
+        self._detect_gpu_compatibility()
     
     def _detect_gpu_compatibility(self):
         """Detect GPU and set compatibility mode"""
@@ -92,26 +89,23 @@ class SmartImageAnalyzer:
         except Exception as e:
             logger.warning(f"Could not detect GPU: {e}")
     
-    # Найдите метод _ensure_initialized и замените его на этот:
+    # Method _ensure_initialized:
 
     def _ensure_initialized(self, progress_callback=None):
         """Lazy loading of Florence-2 model with automatic fallback"""
-        if self._initialized or self.use_mock:
+        if self._initialized:
             return
             
         if self._init_attempted and self._init_error:
             # Don't retry if we already failed
-            logger.warning(f"Previous init failed, using mock mode: {self._init_error}")
-            self.use_mock = True
-            return
+            raise RuntimeError(f"Previous init failed: {self._init_error}")
             
         self._init_attempted = True
         
         if not TRANSFORMERS_AVAILABLE:
             self._init_error = "Transformers not available"
-            self.use_mock = True
-            logger.warning("Transformers not installed, using mock mode")
-            return
+            logger.error("Transformers not installed")
+            raise RuntimeError("Transformers library is required for Florence-2")
             
         try:
             logger.info("Attempting to load Florence-2 model...")
@@ -143,7 +137,7 @@ class SmartImageAnalyzer:
                 progress_callback("Loading model weights...", 0.5)
             
             if self.device == "cuda":
-                # Try different dtypes for GPU - добавляем bfloat16
+                # Try different dtypes for GPU - adding bfloat16
                 dtypes_to_try = [torch.float32, torch.float16, torch.bfloat16]
                 
                 for dtype in dtypes_to_try:
@@ -189,8 +183,8 @@ class SmartImageAnalyzer:
         except Exception as e:
             self._init_error = str(e)
             logger.error(f"Failed to load Florence-2: {e}")
-            logger.info("Falling back to mock mode")
-            self.use_mock = True
+            # No fallback to mock mode anymore
+            raise
             
             # Clean up partial loads
             if self.model is not None:
@@ -254,6 +248,10 @@ class SmartImageAnalyzer:
         # Environment info
         analysis['environment'] = self._extract_enhanced_environment(analysis.get('description', ''), analysis.get('regions'))
         
+        # Generate tags similar to JoyCaption - DISABLED for performance
+        # Tags are now only generated when specifically needed
+        # analysis['tags'] = self._generate_tags_from_analysis(analysis)
+        
         # Add timing info
         analysis['analysis_time'] = time.time() - start_time
         logger.info(f"Analysis completed in {analysis['analysis_time']:.2f} seconds")
@@ -295,77 +293,14 @@ class SmartImageAnalyzer:
         # Ensure model is loaded
         self._ensure_initialized()
         
-        if self.use_mock:
-            logger.info("Using mock analysis mode")
-            return self._mock_analyze(image)
-        
         try:
-            # Try real analysis
+            # Real analysis only
             return self._real_analyze(image, detailed)
             
         except Exception as e:
-            logger.error(f"Real analysis failed: {e}")
-            logger.info("Falling back to mock analysis")
-            self.use_mock = True
-            return self._mock_analyze(image)
+            logger.error(f"Analysis failed: {e}")
+            raise
     
-    def _real_analyze(self, image: Image.Image, detailed: bool) -> Dict[str, Any]:
-        """Perform real Florence-2 analysis with timing"""
-        import time
-        start_time = time.time()
-        
-        analysis = {}
-        
-        # Basic image info
-        analysis['size'] = f"{image.width}x{image.height}"
-        analysis['mode'] = image.mode
-        analysis['analysis_mode'] = 'florence2'
-        
-        # Get detailed caption
-        caption_result = self._run_florence_task(image, "<DETAILED_CAPTION>")
-        if caption_result:
-            raw_description = caption_result.get('<DETAILED_CAPTION>', 'No description available')
-            analysis['description'] = self._clean_description(raw_description)
-        
-        # Get objects with bounding boxes
-        od_result = self._run_florence_task(image, "<OD>")
-        if od_result and '<OD>' in od_result:
-            objects_data = od_result['<OD>']
-            analysis['objects'] = self._process_objects(objects_data)
-        
-        # Analyze regions for composition
-        if detailed:
-            region_result = self._run_florence_task(image, "<DENSE_REGION_CAPTION>")
-            if region_result and '<DENSE_REGION_CAPTION>' in region_result:
-                analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
-        
-        # Get detailed objects analysis
-        detailed_objects = self._extract_detailed_objects(
-            analysis.get('description', ''), 
-            objects_data if 'od_result' in locals() and od_result else {}
-        )
-        
-        # Update objects with detailed categories
-        if detailed_objects:
-            analysis['objects_detailed'] = detailed_objects
-            # Keep backward compatibility
-            if not analysis.get('objects'):
-                analysis['objects'] = {
-                    'main': detailed_objects.get('main', []),
-                    'all': detailed_objects.get('main', [])
-                }
-        
-        # Extract style characteristics
-        analysis['style'] = self._extract_style_info(analysis.get('description', ''))
-        
-        # Environment info
-        analysis['environment'] = self._extract_enhanced_environment(analysis.get('description', ''), analysis.get('regions'))
-        
-        # Add timing info
-        analysis['analysis_time'] = time.time() - start_time
-        logger.info(f"Analysis completed in {analysis['analysis_time']:.2f} seconds")
-        
-        return analysis
     def _run_florence_task(self, image: Image.Image, task: str) -> Optional[Dict]:
         """Run a specific Florence-2 task with proper error handling"""
         try:
@@ -387,19 +322,17 @@ class SmartImageAnalyzer:
                 inputs = device_inputs
             
             with torch.no_grad():
-                # Улучшенные параметры генерации
+                # Deterministic parameters for accuracy
                 generated_ids = self.model.generate(
                     input_ids=inputs["input_ids"],
                     pixel_values=inputs["pixel_values"],
-                    max_new_tokens=512,  # Уменьшено с 1024
-                    min_new_tokens=10,   # Минимум токенов
-                    do_sample=True,      # Включаем сэмплинг для разнообразия
-                    temperature=0.7,     # Контролируем креативность
-                    top_p=0.9,          # Nucleus sampling
-                    num_beams=3,        # Beam search
-                    repetition_penalty=1.2,  # Избегаем повторений
-                    length_penalty=1.0,      # Нейтральная длина
-                    early_stopping=True      # Остановка при достижении хорошего результата
+                    max_new_tokens=1024,     # Enough for full description
+                    min_new_tokens=20,       # Minimum for basic description
+                    do_sample=False,         # Disable randomness for accuracy
+                    num_beams=5,            # More beams for better quality
+                    repetition_penalty=1.1,  # Small penalty for repetitions
+                    length_penalty=1.0,      # Neutral length
+                    early_stopping=True      # Stop when complete
                 )
             
             generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
@@ -421,7 +354,7 @@ class SmartImageAnalyzer:
         if not description:
             return description
         
-        # Список фраз для удаления
+        # List of phrases to remove
         artifacts_to_remove = [
             "ready to be downloaded",
             "download for free",
@@ -442,20 +375,20 @@ class SmartImageAnalyzer:
             "digital art of"
         ]
         
-        # Очищаем описание
+        # Clean the description
         cleaned = description
         for artifact in artifacts_to_remove:
-            # Регистронезависимая замена
+            # Case-insensitive replacement
             import re
             pattern = re.compile(re.escape(artifact), re.IGNORECASE)
             cleaned = pattern.sub("", cleaned)
         
-        # Убираем двойные пробелы и точки
+        # Remove double spaces and dots
         cleaned = re.sub(r'\s+', ' ', cleaned)
         cleaned = re.sub(r'\.+', '.', cleaned)
         cleaned = cleaned.strip()
         
-        # Если описание стало слишком коротким, возвращаем оригинал
+        # If description became too short, return original
         if len(cleaned) < 10 and len(description) > 10:
             return description
         
@@ -536,26 +469,46 @@ class SmartImageAnalyzer:
             matches = re.findall(pattern, desc_lower)
             detailed['props'].extend(matches)
         
-        # Extract background elements
+        # Extract background elements with improved patterns
         background_patterns = [
-            r'(?:in front of|against|behind)\s+(?:a\s+)?([^,\.]+)',
-            r'(?:background shows|background with)\s+(?:a\s+)?([^,\.]+)',
-            r'set against\s+(?:a\s+)?([^,\.]+)'
+            r'(?:in front of|against|behind)\s+(?:a\s+)?([^,\.]+?)(?=\s*(?:,|\.|and|with|$))',
+            r'(?:background shows|background with|background of)\s+(?:a\s+)?([^,\.]+?)(?=\s*(?:,|\.|and|with|$))',
+            r'set against\s+(?:a\s+)?([^,\.]+?)(?=\s*(?:,|\.|and|with|$))',
+            r'in the background(?:,?\s*)([^,\.]+?)(?=\s*(?:,|\.|$))',
+            r'([^,\.]+?)\s+in the background'
         ]
         for pattern in background_patterns:
             matches = re.findall(pattern, desc_lower)
-            detailed['background'].extend(matches)
+            for match in matches:
+                # Clean up the match
+                cleaned = match.strip()
+                # Skip if it's too short or starts with problematic words
+                if len(cleaned) > 3 and not cleaned.startswith(('it ', 'a ', 'an ', 'the ')):
+                    detailed['background'].append(cleaned)
+                elif cleaned.startswith(('a ', 'an ', 'the ')) and len(cleaned) > 5:
+                    detailed['background'].append(cleaned)
         
         # Extract architectural elements
         arch_keywords = ['wall', 'column', 'arch', 'door', 'window', 'castle', 'building', 'tower', 'bridge']
         for keyword in arch_keywords:
             if keyword in desc_lower:
                 # Find context around keyword
-                pattern = rf'(\w+\s+)?{keyword}s?(\s+\w+)?'
+                # Better pattern for architectural elements
+                pattern = rf'\b(\w+\s+)?{keyword}s?(?:\s+(\w+))?\b'
                 matches = re.findall(pattern, desc_lower)
                 for match in matches:
-                    full_match = ''.join(match).strip() + ' ' + keyword if match[0] else keyword + ' ' + ''.join(match).strip()
-                    detailed['architecture'].append(full_match.strip())
+                    if match[0] and match[1]:
+                        full_match = f"{match[0].strip()} {keyword} {match[1].strip()}"
+                    elif match[0]:
+                        full_match = f"{match[0].strip()} {keyword}"
+                    elif match[1]:
+                        full_match = f"{keyword} {match[1].strip()}"
+                    else:
+                        full_match = keyword
+                    
+                    # Only add if it's meaningful
+                    if len(full_match) > 3 and full_match != keyword:
+                        detailed['architecture'].append(full_match.strip())
         
         # Clean up duplicates and empty strings
         for key in detailed:
@@ -688,76 +641,104 @@ class SmartImageAnalyzer:
         
         return env
     
-    def _mock_analyze(self, image: Image.Image) -> Dict[str, Any]:
-        """Enhanced mock analysis with more realistic data"""
-        # Generate pseudo-random but consistent results based on image
-        import hashlib
-        img_hash = hashlib.md5(image.tobytes()).hexdigest()
-        seed = int(img_hash[:8], 16)
-        
-        # Object lists for variety
-        object_pool = [
-            'person', 'car', 'building', 'tree', 'sky', 'road', 'chair', 
-            'table', 'window', 'door', 'plant', 'computer', 'book', 'phone',
-            'dog', 'cat', 'bird', 'flower', 'mountain', 'water', 'cloud'
-        ]
-        
-        # Style options
-        styles = ['photographic', 'artistic', 'cartoon', '3d_render', 'sketch']
-        moods = ['neutral', 'dramatic', 'cheerful', 'serene', 'mysterious']
-        
-        # Generate consistent objects based on seed
-        import random
-        random.seed(seed)
-        
-        num_objects = random.randint(3, 8)
-        selected_objects = random.sample(object_pool, min(num_objects, len(object_pool)))
-        
-        return {
-            'size': f"{image.width}x{image.height}",
-            'mode': image.mode,
-            'analysis_mode': 'mock',
-            'description': f'Mock analysis - A scene containing {", ".join(selected_objects[:3])} and other elements',
-            'objects': {
-                'main': selected_objects[:3],
-                'secondary': selected_objects[3:6] if len(selected_objects) > 3 else [],
-                'all': selected_objects,
-                'counts': {obj: random.randint(1, 3) for obj in selected_objects}
-            },
-            'style': {
-                'type': random.choice(styles),
-                'mood': random.choice(moods),
-                'lighting': random.choice(['natural', 'artificial', 'golden_hour', 'low_light']),
-                'color_palette': random.choice(['warm', 'cool', 'neutral', 'vibrant', 'muted'])
-            },
-            'environment': {
-                'setting': random.choice(['indoor', 'outdoor', 'urban', 'nature']),
-                'time_of_day': random.choice(['morning', 'day', 'evening', 'night']),
-                'weather': random.choice(['clear', 'cloudy', 'rainy', 'foggy'])
-            },
-            'composition': {
-                'aspect_ratio': round(image.width / image.height, 2),
-                'orientation': 'landscape' if image.width > image.height else 'portrait',
-                'complexity': random.choice(['simple', 'moderate', 'complex'])
-            }
-        }
     
-    def set_mock_mode(self, enabled: bool):
-        """Manually enable/disable mock mode"""
-        self.force_mock = enabled
-        self.use_mock = enabled
-        if enabled:
-            logger.info("Mock mode manually enabled")
-        else:
-            logger.info("Mock mode manually disabled")
-            self._initialized = False
-            self._init_attempted = False
-            self._init_error = None
+    def _generate_tags_from_analysis(self, analysis: Dict) -> Dict[str, List[str]]:
+        """Generate tags similar to JoyCaption from Florence-2 analysis"""
+        tags = {
+            'general': [],
+            'character': [],
+            'clothing': [],
+            'style': [],
+            'environment': [],
+            'objects': [],
+            'colors': [],
+            'composition': []
+        }
+        
+        description = analysis.get('description', '').lower()
+        
+        # Extract character tags
+        character_keywords = {
+            '1girl': ['girl', 'woman', 'female', 'lady'],
+            '1boy': ['boy', 'man', 'male', 'guy'],
+            'multiple_girls': ['girls', 'women'],
+            'multiple_boys': ['boys', 'men'],
+            'solo': ['alone', 'single person', 'one person']
+        }
+        
+        for tag, keywords in character_keywords.items():
+            if any(kw in description for kw in keywords):
+                tags['character'].append(tag)
+        
+        # Extract clothing from detailed objects
+        if 'objects_detailed' in analysis:
+            tags['clothing'].extend(analysis['objects_detailed'].get('clothing', []))
+        
+        # Extract style tags
+        style_mapping = {
+            'realistic': ['realistic', 'photorealistic', 'photo'],
+            'anime': ['anime', 'manga'],
+            'digital_art': ['digital art', 'digital painting'],
+            'watercolor': ['watercolor'],
+            'oil_painting': ['oil painting'],
+            '3d': ['3d render', '3d model', 'cgi']
+        }
+        
+        for tag, keywords in style_mapping.items():
+            if any(kw in description for kw in keywords):
+                tags['style'].append(tag)
+        
+        # Environment tags
+        env_info = analysis.get('environment', {})
+        setting = env_info.get('setting', 'unknown')
+        if setting != 'unknown':
+            tags['environment'].append(setting)
+        
+        time_of_day = env_info.get('time_of_day', 'unknown')
+        if time_of_day != 'unknown':
+            tags['environment'].append(time_of_day)
+        
+        # Object tags from detection
+        if 'objects' in analysis:
+            main_objects = analysis['objects'].get('main', [])
+            tags['objects'].extend(main_objects[:5])  # Top 5 objects
+        
+        # Color tags
+        color_keywords = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 
+                         'black', 'white', 'brown', 'gray', 'pink', 'gold', 'silver']
+        for color in color_keywords:
+            if color in description:
+                tags['colors'].append(color)
+        
+        # Composition tags
+        composition_keywords = {
+            'close-up': ['close up', 'closeup', 'face focus'],
+            'full_body': ['full body', 'whole body', 'entire figure'],
+            'upper_body': ['upper body', 'torso', 'bust'],
+            'portrait': ['portrait', 'head shot'],
+            'from_above': ['from above', 'top view', 'bird eye view'],
+            'from_below': ['from below', 'low angle']
+        }
+        
+        for tag, keywords in composition_keywords.items():
+            if any(kw in description for kw in keywords):
+                tags['composition'].append(tag)
+        
+        # Combine all tags into general tags
+        for category, tag_list in tags.items():
+            if category != 'general' and tag_list:
+                tags['general'].extend(tag_list)
+        
+        # Remove duplicates
+        for category in tags:
+            tags[category] = list(dict.fromkeys(tags[category]))
+        
+        return tags
     
     def get_status(self) -> Dict[str, Any]:
         """Get current analyzer status"""
         return {
-            'mode': 'mock' if self.use_mock else 'florence2',
+            'mode': 'florence2',
             'device': self.device,
             'gpu_detected': self.detected_gpu,
             'compatibility_mode': self.gpu_compatibility_mode,

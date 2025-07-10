@@ -5,17 +5,10 @@ Prompt generation logic for FLUX.1 Kontext
 import re
 import logging
 from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
+
+from ka_modules.models import GenerationParams
 
 logger = logging.getLogger("PromptGenerator")
-
-@dataclass
-class GenerationContext:
-    """Context for prompt generation"""
-    task_type: str
-    user_intent: str
-    image_analysis: Optional[Dict[str, Any]] = None
-    preservation_strength: float = 0.8
     
 class PromptGenerator:
     """Generates FLUX.1 Kontext prompts from user intent"""
@@ -58,11 +51,12 @@ class PromptGenerator:
                  preservation_strength: float = 0.8) -> str:
         """Generate FLUX.1 Kontext prompt"""
         
-        context = GenerationContext(
+        context = GenerationParams(
             task_type=task_type,
             user_intent=user_intent,
-            image_analysis=image_analysis,
-            preservation_strength=preservation_strength
+            analysis_data=image_analysis,
+            preservation_strength=preservation_strength,
+            use_analysis=image_analysis is not None
         )
         
         # Determine subtype from user intent
@@ -91,12 +85,12 @@ class PromptGenerator:
             prompt = f"{prompt}. {preservation_clause}"
         
         # Add context from image analysis if available
-        if image_analysis:
-            prompt = self._enhance_with_analysis(prompt, image_analysis, task_type)
+        if context.analysis_data:
+            prompt = self._enhance_with_analysis(prompt, context.analysis_data, task_type)
         
         return prompt
     
-    def _detect_subtype(self, context: GenerationContext) -> Optional[str]:
+    def _detect_subtype(self, context: GenerationParams) -> Optional[str]:
         """Detect task subtype from user intent"""
         intent_lower = context.user_intent.lower()
         
@@ -158,7 +152,7 @@ class PromptGenerator:
         
         return None
     
-    def _extract_template_params(self, context: GenerationContext, template: str) -> Dict[str, str]:
+    def _extract_template_params(self, context: GenerationParams, template: str) -> Dict[str, str]:
         """Extract parameters needed for template from context"""
         params = {}
         intent = context.user_intent
@@ -169,9 +163,9 @@ class PromptGenerator:
         for var in template_vars:
             if var == "object":
                 # Extract object from intent or analysis
-                params[var] = self._extract_object(intent, context.image_analysis)
+                params[var] = self._extract_object(intent, context.analysis_data)
             elif var == "current_color":
-                params[var] = self._extract_current_color(context.image_analysis)
+                params[var] = self._extract_current_color(context.analysis_data)
             elif var == "new_color":
                 params[var] = self._extract_new_color(intent)
             elif var == "style":
@@ -196,7 +190,7 @@ class PromptGenerator:
             elif var == "damage_type":
                 params[var] = self._extract_damage_type(intent)
             elif var == "current_state":
-                params[var] = self._extract_current_state(context.image_analysis)
+                params[var] = self._extract_current_state(context.analysis_data)
             elif var == "new_state":
                 params[var] = self._extract_new_state(intent)
             elif var == "new_object":

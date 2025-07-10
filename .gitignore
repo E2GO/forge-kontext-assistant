@@ -4,10 +4,14 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
 venv/
-.env
-.venv
+env/
+ENV/
 
 # IDE
 .vscode/
@@ -16,32 +20,44 @@ venv/
 *.swo
 *~
 
-# Model cache
-models/
-.cache/
-*.ckpt
-*.safetensors
-*.pt
-*.pth
-
-# Test outputs
-test_outputs/
-*.log
-*.png
-*.jpg
-*.jpeg
-
 # OS
 .DS_Store
 Thumbs.db
-desktop.ini
 
-# Project specific
+# Test outputs
+test_*.log
+*.test
+
+# Model cache
+models/
+model_cache/
+*.safetensors
+*.ckpt
+*.pth
+
+# Temporary files
+tmp/
 temp/
-outputs/
-custom_templates.json
-analysis_cache/
+*.tmp
+*.bak
 
-# Forge/Gradio
-gradio_cached_examples/
-flagged/
+# Archive folder (for old files)
+archive/
+
+# Local test images
+test_images/
+sample_images/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+
+# Documentation drafts
+*_DRAFT.md
+*_WIP.md
+*_TODO.md
+
+# Debug files
+debug_*.py
+debug_*.log

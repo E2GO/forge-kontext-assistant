@@ -6,6 +6,28 @@
 
 AI-powered assistant for FLUX.1 Kontext that analyzes context images and generates optimal instructional prompts through an intuitive interface.
 
+## 🚀 Installation
+
+### Automatic Installation (Recommended)
+The extension will automatically check and install missing dependencies when it loads. If you see any dependency errors:
+
+1. The extension will attempt to install them automatically
+2. If automatic installation fails, run manually:
+   ```bash
+   cd extensions/forge-kontext-assistant
+   python install.py
+   ```
+
+### Manual Installation
+If you prefer to install dependencies manually:
+```bash
+cd extensions/forge-kontext-assistant
+pip install -r requirements.txt
+```
+
+### Optional Dependencies
+- `liger-kernel` - Optimizes JoyCaption performance (will be installed automatically if possible)
+
 ## 🌟 Features
 
 ### ✨ Current Features (v2.75)
