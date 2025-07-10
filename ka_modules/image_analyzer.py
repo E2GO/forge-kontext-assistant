@@ -237,7 +237,8 @@ class ImageAnalyzer:
                 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-    def _real_analyze(self, image: Image.Image, detailed: bool) -> Dict[str, Any]:
+    def _real_analyze(self, image: Image.Image, detailed: bool, 
+                      promptgen_instruction: str = "<MORE_DETAILED_CAPTION>") -> Dict[str, Any]:
         """Perform real Florence-2 analysis with timing"""
         import time
         start_time = time.time()
@@ -253,9 +254,10 @@ class ImageAnalyzer:
         # Different analysis based on model type
         if self.model_type == "promptgen_v2":
             # PromptGen v2.0 specific analysis
+            logger.info(f"Using PromptGen v2.0 with instruction: {promptgen_instruction}")
             
-            # Get detailed caption using PromptGen's best instruction
-            caption_result = self._run_florence_task(image, "<MORE_DETAILED_CAPTION>")
+            # Get caption using selected PromptGen instruction
+            caption_result = self._run_florence_task(image, promptgen_instruction)
             logger.info(f"PromptGen caption_result type: {type(caption_result)}")
             logger.info(f"PromptGen caption_result: {caption_result}")
             
@@ -263,35 +265,95 @@ class ImageAnalyzer:
                 # Check the structure of the result
                 if isinstance(caption_result, dict):
                     logger.info(f"Caption result keys: {list(caption_result.keys())}")
-                    # Try to get the result from the task key
-                    raw_description = caption_result.get('<MORE_DETAILED_CAPTION>', '')
+                    logger.info(f"Caption result values: {caption_result}")
+                    
+                    # MiaoshouAI compatibility - they use different names for MIXED instructions
+                    instruction_key = promptgen_instruction
+                    if promptgen_instruction == "<MIXED_CAPTION>":
+                        instruction_key = "<MIX_CAPTION>"
+                    elif promptgen_instruction == "<MIXED_CAPTION_PLUS>":
+                        instruction_key = "<MIX_CAPTION_PLUS>"
+                    
+                    # Try to get the result from the task key (MiaoshouAI style: parsed_answer[prompt])
+                    raw_description = caption_result.get(instruction_key, '')
+                    if not raw_description:
+                        # Try original instruction
+                        raw_description = caption_result.get(promptgen_instruction, '')
                     if not raw_description:
                         # Try without angle brackets
-                        raw_description = caption_result.get('MORE_DETAILED_CAPTION', '')
+                        instruction_no_brackets = promptgen_instruction.strip('<>')
+                        raw_description = caption_result.get(instruction_no_brackets, '')
                     if not raw_description and len(caption_result) == 1:
                         # Get the first value if there's only one key
                         raw_description = list(caption_result.values())[0]
                 else:
                     raw_description = str(caption_result)
+            else:
+                logger.warning(f"No result from Florence task {promptgen_instruction}")
+                raw_description = ""
                 
-                logger.info(f"PromptGen raw_description: {raw_description[:500]}...")
+            logger.info(f"PromptGen instruction: {promptgen_instruction}")
+            logger.info(f"PromptGen raw_description: {raw_description[:500]}...")
+            logger.info(f"PromptGen raw_description length: {len(raw_description)}")
+            
+            # Store result based on instruction type
+            if promptgen_instruction == "<GENERATE_TAGS>":
+                # Clean up tags - remove any task prompts if present
+                tags_text = raw_description
+                if tags_text.startswith('<GENERATE_TAGS>'):
+                    tags_text = tags_text.replace('<GENERATE_TAGS>', '').strip()
+                
+                # If tags are empty, try alternate parsing
+                if not tags_text or len(tags_text) < 5:
+                    logger.warning(f"Tags result too short ({len(tags_text)} chars), trying alternate approach")
+                    # Try running a normal caption and extract key elements
+                    alt_result = self._run_florence_task(image, "<MORE_DETAILED_CAPTION>")
+                    if alt_result:
+                        tags_text = "image analysis fallback - tags generation failed"
+                
+                if tags_text:
+                    analysis['tags'] = {
+                        'danbooru': tags_text,
+                        'general': tags_text
+                    }
+                # Don't add description for tags-only mode
+            elif promptgen_instruction == "<ANALYZE>":
+                # Clean up analysis text
+                analysis_text = raw_description
+                if analysis_text.startswith('<ANALYZE>'):
+                    analysis_text = analysis_text.replace('<ANALYZE>', '').strip()
+                
+                # If analysis is empty, try alternate parsing
+                if not analysis_text or len(analysis_text) < 10:
+                    logger.warning(f"Analysis result too short ({len(analysis_text)} chars), trying alternate approach")
+                    # Try running a normal caption as fallback
+                    alt_result = self._run_florence_task(image, "<MORE_DETAILED_CAPTION>")
+                    if alt_result:
+                        analysis_text = "Composition analysis fallback - analysis generation failed"
+                
+                if analysis_text:
+                    analysis['composition_analysis'] = analysis_text
+                # Don't add description for analysis-only mode
+            else:
+                # For all caption types, store as description
                 analysis['description'] = self._clean_description(raw_description)
             
-            # Get Danbooru tags
-            tags_result = self._run_florence_task(image, "<GENERATE_TAGS>")
-            logger.info(f"Tags result type: {type(tags_result)}")
-            logger.info(f"Tags result: {tags_result}")
-            
-            if tags_result:
-                # Extract tags text
-                if isinstance(tags_result, dict):
-                    tags_text = tags_result.get('<GENERATE_TAGS>', '')
-                    if not tags_text:
-                        tags_text = tags_result.get('GENERATE_TAGS', '')
-                    if not tags_text and len(tags_result) == 1:
-                        tags_text = list(tags_result.values())[0]
-                else:
-                    tags_text = str(tags_result)
+            # Get Danbooru tags only if not already retrieved
+            if promptgen_instruction != "<GENERATE_TAGS>":
+                tags_result = self._run_florence_task(image, "<GENERATE_TAGS>")
+                logger.info(f"Tags result type: {type(tags_result)}")
+                logger.info(f"Tags result: {tags_result}")
+                
+                if tags_result:
+                    # Extract tags text
+                    if isinstance(tags_result, dict):
+                        tags_text = tags_result.get('<GENERATE_TAGS>', '')
+                        if not tags_text:
+                            tags_text = tags_result.get('GENERATE_TAGS', '')
+                        if not tags_text and len(tags_result) == 1:
+                            tags_text = list(tags_result.values())[0]
+                    else:
+                        tags_text = str(tags_result)
                 
                 logger.info(f"Tags text: {tags_text}")
                 
@@ -404,7 +466,8 @@ class ImageAnalyzer:
             logger.error(f"Test inference failed: {e}")
             raise
     
-    def analyze(self, image: Image.Image, detailed: bool = True) -> Dict[str, Any]:
+    def analyze(self, image: Image.Image, detailed: bool = True, 
+                promptgen_instruction: str = "<MORE_DETAILED_CAPTION>") -> Dict[str, Any]:
         """
         Analyze image with automatic fallback to mock if needed
         """
@@ -415,7 +478,7 @@ class ImageAnalyzer:
         
         try:
             # Real analysis only
-            return self._real_analyze(image, detailed)
+            return self._real_analyze(image, detailed, promptgen_instruction)
             
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
@@ -508,6 +571,50 @@ class ImageAnalyzer:
                             logger.info(f"  {k}: {v[:200]}...")
                         else:
                             logger.info(f"  {k}: {type(v)}")
+                
+                # Special handling for PromptGen tasks that might return empty
+                if self.model_type == "promptgen_v2":
+                    # For PromptGen v2.0, check if the result is in the correct key
+                    # MiaoshouAI uses parsed_answer[prompt] to get the result
+                    
+                    # Fix task names for MiaoshouAI compatibility
+                    task_key = task
+                    if task == "<MIXED_CAPTION>":
+                        task_key = "<MIX_CAPTION>"
+                    elif task == "<MIXED_CAPTION_PLUS>":
+                        task_key = "<MIX_CAPTION_PLUS>"
+                    
+                    # Check if we have the result under the task key
+                    if isinstance(parsed_answer, dict) and task_key in parsed_answer:
+                        # Good, we have the result where expected
+                        logger.info(f"Found result under key {task_key}")
+                    elif isinstance(parsed_answer, dict) and task in parsed_answer:
+                        # Found under original key
+                        logger.info(f"Found result under original key {task}")
+                    else:
+                        # Try to extract from raw output if parsed_answer doesn't have our key
+                        logger.warning(f"Result not found under expected keys, checking raw output")
+                        
+                        if task == "<GENERATE_TAGS>" and generated_text_clean:
+                            # Tags might be in the raw output
+                            logger.info(f"Attempting to extract tags from raw output")
+                            # Look for comma-separated pattern after the instruction
+                            if "<GENERATE_TAGS>" in generated_text_clean:
+                                parts = generated_text_clean.split("<GENERATE_TAGS>")
+                                if len(parts) > 1 and parts[1].strip():
+                                    parsed_answer = {task: parts[1].strip()}
+                            elif "," in generated_text_clean:
+                                parsed_answer = {task: generated_text_clean}
+                            
+                        elif task == "<ANALYZE>" and generated_text_clean and len(generated_text_clean) > 20:
+                            # Analysis might be in raw output
+                            logger.info(f"Attempting to extract analysis from raw output")
+                            if "<ANALYZE>" in generated_text_clean:
+                                parts = generated_text_clean.split("<ANALYZE>")
+                                if len(parts) > 1 and parts[1].strip():
+                                    parsed_answer = {task: parts[1].strip()}
+                            else:
+                                parsed_answer = {task: generated_text_clean}
                 
                 return parsed_answer
                 

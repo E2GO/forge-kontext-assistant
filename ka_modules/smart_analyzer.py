@@ -100,7 +100,8 @@ class SmartAnalyzer:
                         self.joycaption = None
     
     def analyze(self, image: Image.Image, use_florence: bool = True, 
-                use_joycaption: bool = True) -> Dict[str, Any]:
+                use_joycaption: bool = False,  # Changed default to False
+                promptgen_instruction: str = "<MORE_DETAILED_CAPTION>") -> Dict[str, Any]:
         """
         Perform comprehensive analysis using selected models
         
@@ -108,6 +109,7 @@ class SmartAnalyzer:
             image: PIL Image to analyze
             use_florence: Use Florence-2 for technical analysis
             use_joycaption: Use JoyCaption for artistic analysis
+            promptgen_instruction: PromptGen instruction to use (only for promptgen_v2)
             
         Returns:
             Combined analysis results
@@ -131,7 +133,7 @@ class SmartAnalyzer:
             if use_florence and use_joycaption:
                 # Run sequentially to avoid memory issues
                 logger.info("Running Florence-2 analysis...")
-                florence_result = self._run_florence(image)
+                florence_result = self._run_florence(image, promptgen_instruction)
                 
                 # Clear some memory before running JoyCaption
                 import gc
@@ -148,7 +150,7 @@ class SmartAnalyzer:
             elif use_florence:
                 # Florence only
                 logger.info(f"Running Florence-only analysis with model type: {self.florence_model_type}")
-                florence_result = self._run_florence(image)
+                florence_result = self._run_florence(image, promptgen_instruction)
                 results.update(self._format_florence_only(florence_result))
                 
             elif use_joycaption:
@@ -166,7 +168,7 @@ class SmartAnalyzer:
         
         return results
     
-    def _run_florence(self, image: Image.Image) -> Dict[str, Any]:
+    def _run_florence(self, image: Image.Image, promptgen_instruction: str = "<MORE_DETAILED_CAPTION>") -> Dict[str, Any]:
         """Run Florence-2 analysis"""
         self._ensure_florence()
         # Log which model is being used
@@ -178,7 +180,12 @@ class SmartAnalyzer:
             return {}
         
         try:
-            result = self.florence.analyze(image, detailed=True)
+            # Pass promptgen_instruction if using promptgen_v2
+            if self.florence_model_type == "promptgen_v2":
+                logger.info(f"Using PromptGen v2.0 with instruction: {promptgen_instruction}")
+                result = self.florence.analyze(image, detailed=True, promptgen_instruction=promptgen_instruction)
+            else:
+                result = self.florence.analyze(image, detailed=True)
             logger.info(f"Florence analysis returned: {list(result.keys()) if result else 'None'}")
             return result
         except Exception as e:
@@ -384,7 +391,7 @@ class SmartAnalyzer:
     
     def _format_florence_only(self, florence: Dict) -> Dict[str, Any]:
         """Format results when only Florence is used"""
-        return {
+        result = {
             'description': florence.get('description', ''),
             'technical_data': {
                 'size': florence.get('size', 'unknown'),
@@ -397,6 +404,25 @@ class SmartAnalyzer:
             'environment': florence.get('environment', {}),
             'analysis_mode': 'florence_only'
         }
+        
+        # Preserve important fields from PromptGen v2.0
+        if 'model_type' in florence:
+            result['model_type'] = florence['model_type']
+        if 'tags' in florence:
+            result['tags'] = florence['tags']
+        if 'mixed_caption' in florence:
+            result['mixed_caption'] = florence['mixed_caption']
+        if 'composition_analysis' in florence:
+            result['composition_analysis'] = florence['composition_analysis']
+        
+        # IMPORTANT: Preserve the analyzers_used flag
+        # This was missing and causing the UI to show wrong model info
+        result['analyzers_used'] = {
+            'florence2': True,
+            'joycaption': False
+        }
+        
+        return result
     
     def _format_joy_only(self, joy: Dict) -> Dict[str, Any]:
         """Format results when only JoyCaption is used"""
