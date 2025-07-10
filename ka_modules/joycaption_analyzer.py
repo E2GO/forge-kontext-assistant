@@ -273,10 +273,37 @@ class JoyCaptionAnalyzer:
                     generate_kwargs['temperature'] = self.temperature
                     generate_kwargs['top_p'] = self.top_p
                 
-                generate_ids = self.model.generate(
-                    **inputs,
-                    **generate_kwargs
-                )[0]  # Get first (and only) generation
+                # Add timeout mechanism for generation
+                import signal
+                from contextlib import contextmanager
+                
+                @contextmanager
+                def timeout(seconds):
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError(f"Generation timed out after {seconds} seconds")
+                    
+                    # Set the signal handler and alarm
+                    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(seconds)
+                    try:
+                        yield
+                    finally:
+                        signal.alarm(0)
+                        signal.signal(signal.SIGALRM, old_handler)
+                
+                # Use timeout only on Unix systems
+                if hasattr(signal, 'SIGALRM'):
+                    with timeout(60):  # 60 second timeout
+                        generate_ids = self.model.generate(
+                            **inputs,
+                            **generate_kwargs
+                        )[0]  # Get first (and only) generation
+                else:
+                    # Fallback for Windows/non-Unix
+                    generate_ids = self.model.generate(
+                        **inputs,
+                        **generate_kwargs
+                    )[0]  # Get first (and only) generation
         except Exception as e:
             logger.error(f"Generation failed: {e}")
             logger.error(f"Input keys: {list(inputs.keys())}")

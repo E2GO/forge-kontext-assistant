@@ -11,6 +11,7 @@ import sys
 import time
 from typing import Optional, List, Dict, Any, Tuple
 from PIL import Image
+import threading
 
 # Forge imports
 from modules import scripts, shared
@@ -76,6 +77,7 @@ class KontextAssistant(scripts.Script):
     # Shared analyzer across instances to avoid reloading
     _shared_analyzer = None
     _analyzer_settings = None
+    _analysis_lock = None
     
     def __init__(self):
         super().__init__()
@@ -91,6 +93,10 @@ class KontextAssistant(scripts.Script):
         self._image_hashes = [None, None, None]
         # Use limited cache for analysis results
         self._analysis_cache = ImageHashCache(max_images=9) if MODULES_AVAILABLE else None
+        
+        # Initialize class-level lock if not exists
+        if KontextAssistant._analysis_lock is None:
+            KontextAssistant._analysis_lock = threading.Lock()
         
     def title(self):
         return "Kontext Smart Assistant"
@@ -241,77 +247,79 @@ class KontextAssistant(scripts.Script):
                      use_florence: bool, use_joycaption: bool, 
                      show_detailed: bool, *args):
         """Analyze a kontext image with timing"""
-        try:
-            start_time = time.time()
-            # Update settings
-            self.force_cpu = force_cpu
-            
-            # Reinitialize if needed
-            self._initialize_modules(force_cpu=force_cpu)
-            
-            # Get kontext images from UI args
-            kontext_images = self._get_kontext_images_from_ui(*args)
-            
-            if image_index >= len(kontext_images):
-                return f"❌ Invalid image index {image_index + 1}", {}
-            
-            image = kontext_images[image_index]
-            if image is None:
-                # Clear analysis cache for this slot
-                self._analysis_cache.invalidate_image(image_index)
-                return f"❌ No image in slot {image_index + 1} - please load an image in Forge FluxKontext Pro first", {}
-            
-            # Check if we should clear due to image change
-            if self._should_clear_analysis(image_index, image):
-                self._analysis_cache.invalidate_image(image_index)
-                logger.info(f"Image {image_index + 1} changed, clearing cached analysis")
-            
-            # Check cache first
-            cache_key = f"analysis_{use_florence}_{use_joycaption}"
-            cached_result = self._analysis_cache.get(self._analysis_cache.get_image_key(image_index, cache_key))
-            if cached_result:
-                logger.info(f"Using cached analysis for image {image_index + 1}")
-                return self._format_analysis_output(cached_result, show_detailed), cached_result
-            
-            # Skip progress for now - might be causing the hang
-            # Previously had progress callback here but removed it
-            
-            # Use SmartAnalyzer with selected models
-            if not use_florence and not use_joycaption:
-                return "❌ Please select at least one analysis method", {}
-                
+        # Use lock to prevent concurrent analysis
+        with KontextAssistant._analysis_lock:
             try:
-                # Run analysis with SmartAnalyzer
-                analysis = self.analyzer.analyze(image, use_florence=use_florence, use_joycaption=use_joycaption)
+                start_time = time.time()
+                # Update settings
+                self.force_cpu = force_cpu
                 
-                # Check for errors
-                if not analysis.get('success', True):
-                    error_msg = analysis.get('error', 'Unknown error')
-                    return f"❌ Analysis failed: {error_msg}", {}
+                # Reinitialize if needed
+                self._initialize_modules(force_cpu=force_cpu)
                 
-                # Skip progress for now
-                # if hasattr(progress, '__call__'):
-                #     progress(1.0, desc="Analysis complete!")
+                # Get kontext images from UI args
+                kontext_images = self._get_kontext_images_from_ui(*args)
+                
+                if image_index >= len(kontext_images):
+                    return f"❌ Invalid image index {image_index + 1}", {}
+            
+                image = kontext_images[image_index]
+                if image is None:
+                    # Clear analysis cache for this slot
+                    self._analysis_cache.invalidate_image(image_index)
+                    return f"❌ No image in slot {image_index + 1} - please load an image in Forge FluxKontext Pro first", {}
+            
+                # Check if we should clear due to image change
+                if self._should_clear_analysis(image_index, image):
+                    self._analysis_cache.invalidate_image(image_index)
+                    logger.info(f"Image {image_index + 1} changed, clearing cached analysis")
+            
+                # Check cache first
+                cache_key = f"analysis_{use_florence}_{use_joycaption}"
+                cached_result = self._analysis_cache.get(self._analysis_cache.get_image_key(image_index, cache_key))
+                if cached_result:
+                    logger.info(f"Using cached analysis for image {image_index + 1}")
+                    return self._format_analysis_output(cached_result, show_detailed), cached_result
+            
+                # Skip progress for now - might be causing the hang
+                # Previously had progress callback here but removed it
+                
+                # Use SmartAnalyzer with selected models
+                if not use_florence and not use_joycaption:
+                    return "❌ Please select at least one analysis method", {}
+                
+                try:
+                    # Run analysis with SmartAnalyzer
+                    analysis = self.analyzer.analyze(image, use_florence=use_florence, use_joycaption=use_joycaption)
                     
+                    # Check for errors
+                    if not analysis.get('success', True):
+                        error_msg = analysis.get('error', 'Unknown error')
+                        return f"❌ Analysis failed: {error_msg}", {}
+                    
+                    # Skip progress for now
+                    # if hasattr(progress, '__call__'):
+                    #     progress(1.0, desc="Analysis complete!")
+                        
+                except Exception as e:
+                    logger.error(f"Analysis failed: {e}")
+                    return f"❌ Analysis failed: {str(e)}", {}
+            
+                # Calculate analysis time
+                analysis_time = time.time() - start_time
+                logger.info(f"Analysis completed in {analysis_time:.2f}s")
+                
+                # Cache the result
+                self._analysis_cache.set(self._analysis_cache.get_image_key(image_index, cache_key), analysis)
+                
+                # Format output using the method
+                return self._format_analysis_output(analysis, show_detailed), analysis
+                
             except Exception as e:
-                logger.error(f"Analysis failed: {e}")
-                return f"❌ Analysis failed: {str(e)}", {}
-            
-            # Calculate analysis time
-            analysis_time = time.time() - start_time
-            logger.info(f"Analysis completed in {analysis_time:.2f}s")
-            
-            # Cache the result
-            self._analysis_cache.set(self._analysis_cache.get_image_key(image_index, cache_key), analysis)
-            
-            # Format output using the method
-            return self._format_analysis_output(analysis, show_detailed), analysis
-            
-        except Exception as e:
-            logger.error(f"Error analyzing image {image_index + 1}: {e}")
-            import traceback
-            traceback.print_exc()
-            return f"❌ Error: {str(e)}", {}
+                logger.error(f"Error analyzing image {image_index + 1}: {e}")
+                import traceback
+                traceback.print_exc()
+                return f"❌ Error: {str(e)}", {}
     
     def ui(self, is_img2img):
         """Create Smart Assistant UI"""
@@ -590,14 +598,12 @@ class KontextAssistant(scripts.Script):
                     try:
                         logger.info("Unloading analyzer models to free GPU memory...")
                         self.analyzer.unload_models()
-                        # Force cleanup
-                        import gc
-                        gc.collect()
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
                         logger.info("Analyzer models unloaded successfully")
                     except Exception as e:
                         logger.warning(f"Failed to unload models: {e}")
+                    finally:
+                        # Add a small delay to ensure cleanup completes
+                        time.sleep(0.5)
                 
                 return [
                     results[0][0], results[0][1],  # Image 1
@@ -740,58 +746,38 @@ class KontextAssistant(scripts.Script):
         is_joycaption_only = analyzers_used.get('joycaption', False) and not analyzers_used.get('florence2', False)
         both_models = analyzers_used.get('florence2', False) and analyzers_used.get('joycaption', False)
         
-        # Main description (without model labels)
-        if 'description' in analysis:
-            desc = DescriptionCleaner.clean(analysis['description'])
+        # Description - ONLY from Florence-2
+        if analyzers_used.get('florence2', False):
+            # Check for Florence description in various locations
+            desc = None
+            if 'florence_description' in analysis:
+                desc = analysis['florence_description']
+            elif 'florence_analysis' in analysis and analysis['florence_analysis']:
+                desc = analysis['florence_analysis'].get('description', '')
+            elif is_florence_only and 'description' in analysis:
+                desc = analysis['description']
+            
             if desc:
-                output += f"📝 Description: {desc}"
+                desc = DescriptionCleaner.clean(desc)
+                if desc:
+                    output += f"📝 Description (Florence-2):\n{desc}"
         
-        # Technical Data section
-        if 'technical_data' in analysis:
-            tech = analysis['technical_data']
-            if output:
-                output += "\n\n"
-            output += "🔬 Technical Data:"
-            
-            # Size and mode
-            if 'size' in tech and tech['size'] != 'unknown':
-                output += f"\n📐 Size: {tech['size']}"
-            if 'mode' in tech and tech['mode'] != 'unknown':
-                output += f"\n🎨 Mode: {tech['mode']}"
-            
-            # Objects with positions
-            if 'objects_with_positions' in tech and isinstance(tech['objects_with_positions'], dict):
-                obj_data = tech['objects_with_positions']
-                if 'main' in obj_data and obj_data['main']:
-                    output += f"\n🎯 Objects: {', '.join(obj_data['main'][:8])}"
-                if 'counts' in obj_data and show_detailed:
-                    output += f"\n📊 Object counts: {obj_data['counts']}"
-            
-            # Text detected
-            if 'text_detected' in tech and tech['text_detected']:
-                text_items = tech['text_detected']
-                if isinstance(text_items, list) and text_items:
-                    output += f"\n📝 Text detected: {', '.join(text_items[:5])}"
-                    if len(text_items) > 5:
-                        output += f" (+{len(text_items) - 5} more)"
-            
-            # Regions/areas
-            if 'regions' in tech and tech['regions'] and show_detailed:
-                output += f"\n🗺️ Regions: {len(tech['regions'])} detected"
-        
-        # Tags section with categories underneath
-        if 'tags' in analysis and isinstance(analysis['tags'], dict):
+        # Tags section with categories underneath - ONLY from JoyCaption
+        if analyzers_used.get('joycaption', False) and 'tags' in analysis and isinstance(analysis['tags'], dict):
             tags = analysis['tags']
             if tags.get('danbooru'):
                 # Add spacing only if there's already content
                 if output:
                     output += "\n\n"
-                output += "Tags (JoyCaption):"
-                output += f"\n🏷️ {tags['danbooru']}"
+                output += "🏷️ Tags (JoyCaption):\n"
+                output += f"{tags['danbooru']}"
                 
                 # Categories underneath tags
                 if 'categories' in analysis and isinstance(analysis['categories'], dict):
                     cats = analysis['categories']
+                    
+                    # Add blank line before categories
+                    output += "\n"
                     
                     # Characters
                     if cats.get('characters'):
@@ -859,7 +845,7 @@ class KontextAssistant(scripts.Script):
             
             if tags.get('general') and show_detailed:
                 output += f"\n🔖 General tags: {tags['general']}"
-        elif 'categories' in analysis and isinstance(analysis['categories'], dict):
+        elif analyzers_used.get('joycaption', False) and 'categories' in analysis and isinstance(analysis['categories'], dict):
             # JoyCaption mode but no tags - still show categories
             if output:
                 output += "\n\n"
@@ -970,13 +956,15 @@ class KontextAssistant(scripts.Script):
             if composition != 'unknown' and show_detailed:
                 output += f"\n📸 Composition: {composition}"
         
-        # Analysis info at the end
+        # Analysis info at the end (time and mode in one line)
         if output:
             output += "\n"
         
+        analysis_info = []
+        
         # Analysis time
         if 'total_analysis_time' in analysis:
-            output += f"\n⏱️ Analysis time: {analysis['total_analysis_time']:.2f}s"
+            analysis_info.append(f"⏱️ {analysis['total_analysis_time']:.2f}s")
         
         # Analysis mode
         if analyzers_used:
@@ -986,7 +974,11 @@ class KontextAssistant(scripts.Script):
             if analyzers_used.get('joycaption', False):
                 modes.append("JoyCaption")
             if modes:
-                output += f"\n🤖 Mode: {' + '.join(modes)}"
+                analysis_info.append(f"🤖 {' + '.join(modes)}")
+        
+        # Combine time and mode in one line
+        if analysis_info:
+            output += f"\n{' | '.join(analysis_info)}"
         
         return output
 

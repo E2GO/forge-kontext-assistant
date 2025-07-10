@@ -8,6 +8,7 @@ from typing import Dict, Optional, Any, List
 from PIL import Image
 import concurrent.futures
 import torch
+import threading
 
 from ka_modules.image_analyzer import ImageAnalyzer
 from ka_modules.joycaption_analyzer import JoyCaptionAnalyzer
@@ -40,32 +41,42 @@ class SmartAnalyzer:
         # Use only 1 worker to prevent memory issues when analyzing multiple images
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         
+        # Add locks for thread-safe model initialization
+        self._florence_lock = threading.Lock()
+        self._joycaption_lock = threading.Lock()
+        
         logger.info(f"Smart analyzer initialized for device: {device}")
     
     def _ensure_florence(self):
         """Lazy initialize Florence-2"""
         if self.florence is None:
-            logger.info("Initializing Florence-2 analyzer...")
-            self.florence = ImageAnalyzer(
-                device=self.device,
-                force_cpu=self.force_cpu
-            )
+            with self._florence_lock:
+                # Double-check after acquiring lock
+                if self.florence is None:
+                    logger.info("Initializing Florence-2 analyzer...")
+                    self.florence = ImageAnalyzer(
+                        device=self.device,
+                        force_cpu=self.force_cpu
+                    )
     
     def _ensure_joycaption(self):
         """Lazy initialize JoyCaption"""
         if self.joycaption is None:
-            try:
-                logger.info("Initializing JoyCaption analyzer...")
-                self.joycaption = JoyCaptionAnalyzer(
-                    device=self.device,
-                    force_cpu=self.force_cpu,
-                    use_gguf=False  # Use full HuggingFace model
-                )
-            except Exception as e:
-                logger.warning(f"Failed to initialize JoyCaption: {e}")
-                logger.info("JoyCaption will not be available")
-                # Don't use fallback - let user know JoyCaption failed
-                self.joycaption = None
+            with self._joycaption_lock:
+                # Double-check after acquiring lock
+                if self.joycaption is None:
+                    try:
+                        logger.info("Initializing JoyCaption analyzer...")
+                        self.joycaption = JoyCaptionAnalyzer(
+                            device=self.device,
+                            force_cpu=self.force_cpu,
+                            use_gguf=False  # Use full HuggingFace model
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize JoyCaption: {e}")
+                        logger.info("JoyCaption will not be available")
+                        # Don't use fallback - let user know JoyCaption failed
+                        self.joycaption = None
     
     def analyze(self, image: Image.Image, use_florence: bool = True, 
                 use_joycaption: bool = True) -> Dict[str, Any]:
@@ -381,15 +392,34 @@ class SmartAnalyzer:
     
     def unload_models(self):
         """Unload both models to free memory"""
-        if self.florence:
-            self.florence.unload_model()
-            self.florence = None
-            
-        if self.joycaption:
-            self.joycaption.unload_model()
-            self.joycaption = None
+        logger.info("Starting model unload process...")
         
-        logger.info("All models unloaded")
+        # Use locks to ensure thread-safe unloading
+        with self._florence_lock:
+            if self.florence:
+                try:
+                    self.florence.unload_model()
+                except Exception as e:
+                    logger.warning(f"Error unloading Florence: {e}")
+                finally:
+                    self.florence = None
+        
+        with self._joycaption_lock:
+            if self.joycaption:
+                try:
+                    self.joycaption.unload_model()
+                except Exception as e:
+                    logger.warning(f"Error unloading JoyCaption: {e}")
+                finally:
+                    self.joycaption = None
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        logger.info("All models unloaded and memory cleared")
     
     def __del__(self):
         """Cleanup when object is destroyed"""
