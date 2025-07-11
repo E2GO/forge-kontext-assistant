@@ -72,6 +72,7 @@ class ImageAnalyzer:
         self._initialized = False
         self._init_attempted = False
         self._init_error = None
+        self.dtype = None  # Store the dtype used for the model
         
         # Model configuration
         self.model_type = model_type
@@ -119,7 +120,7 @@ class ImageAnalyzer:
     def _ensure_initialized(self, progress_callback=None):
         """Lazy loading of Florence-2 model with automatic fallback"""
         if self._initialized:
-            logger.debug(f"Model already initialized with {self.model_type} ({self.model_id})")
+            logger.info(f"Model already initialized with {self.model_type} ({self.model_id}), dtype: {self.dtype}")
             return
             
         if self._init_attempted and self._init_error:
@@ -172,8 +173,8 @@ class ImageAnalyzer:
                 progress_callback("Loading model weights...", 0.5)
             
             if self.device == "cuda":
-                # Try different dtypes for GPU - adding bfloat16
-                dtypes_to_try = [torch.float32, torch.float16, torch.bfloat16]
+                # Try different dtypes for GPU - prioritize FP16 for speed
+                dtypes_to_try = [torch.float16, torch.bfloat16, torch.float32]
                 
                 for dtype in dtypes_to_try:
                     try:
@@ -189,7 +190,32 @@ class ImageAnalyzer:
                         # Test inference to ensure it works
                         self._test_inference()
                         
+                        self.dtype = dtype  # Store successful dtype
                         logger.info(f"Model loaded successfully with {dtype}")
+                        
+                        # Try to compile model for better performance (PyTorch 2.0+)
+                        if hasattr(torch, 'compile') and torch.__version__ >= "2.0":
+                            try:
+                                logger.info(f"Attempting to compile model with torch.compile() - PyTorch {torch.__version__}")
+                                compile_start = time.time()
+                                # Try default mode first for better compatibility
+                                self.model = torch.compile(self.model, mode="default", fullgraph=False)
+                                compile_time = time.time() - compile_start
+                                logger.info(f"Model compiled successfully in {compile_time:.1f}s")
+                                # Force a test to trigger compilation
+                                logger.info("Triggering compilation with test inference...")
+                                self._test_inference()
+                                logger.info("Compilation test completed successfully")
+                            except Exception as e:
+                                logger.warning(f"torch.compile() failed, using standard model: {str(e)}")
+                                logger.warning(f"Full error: {type(e).__name__}: {e}")
+                                # Model is still usable without compilation
+                        
+                        # Log memory and performance info
+                        if torch.cuda.is_available():
+                            allocated = torch.cuda.memory_allocated() / 1024**3
+                            logger.info(f"GPU memory allocated: {allocated:.2f} GB")
+                        
                         break
                         
                     except RuntimeError as e:
@@ -199,9 +225,10 @@ class ImageAnalyzer:
                         continue
             else:
                 # CPU mode - always use float32
+                self.dtype = torch.float32
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_id,
-                    torch_dtype=torch.float32,
+                    torch_dtype=self.dtype,
                     trust_remote_code=True,
                     cache_dir=self.cache_dir
                 )
@@ -209,7 +236,7 @@ class ImageAnalyzer:
             
             load_time = time.time() - start_time
             logger.info(f"Florence-2 loaded successfully in {load_time:.1f}s on {self.device}")
-            logger.info(f"Model type: {self.model_type}, Model ID: {self.model_id}")
+            logger.info(f"Model type: {self.model_type}, Model ID: {self.model_id}, dtype: {self.dtype}")
             
             # Test the model immediately
             if self.model_type == "promptgen_v2":
@@ -242,14 +269,17 @@ class ImageAnalyzer:
         """Perform real Florence-2 analysis with timing"""
         import time
         start_time = time.time()
+        logger.info(f"Starting analysis with {self.model_type}, dtype: {self.dtype}, device: {self.device}")
         
         analysis = {}
+        task_times = {}  # Initialize task timing dictionary
         
         # Basic image info
         analysis['size'] = f"{image.width}x{image.height}"
         analysis['mode'] = image.mode
         analysis['analysis_mode'] = 'florence2'
         analysis['model_type'] = self.model_type
+        analysis['dtype'] = str(self.dtype) if self.dtype else "unknown"
         
         # Different analysis based on model type
         if self.model_type == "promptgen_v2":
@@ -365,7 +395,9 @@ class ImageAnalyzer:
             
             # Get mixed caption for Flux compatibility
             if detailed:
+                task_start = time.time()
                 mixed_result = self._run_florence_task(image, "<MIXED_CAPTION_PLUS>")
+                task_times['mixed_caption'] = time.time() - task_start
                 if mixed_result:
                     if isinstance(mixed_result, dict):
                         mixed_text = mixed_result.get('<MIXED_CAPTION_PLUS>', '')
@@ -378,7 +410,9 @@ class ImageAnalyzer:
                         analysis['mixed_caption'] = str(mixed_result)
                 
                 # Get composition analysis
+                task_start = time.time()
                 analyze_result = self._run_florence_task(image, "<ANALYZE>")
+                task_times['analyze'] = time.time() - task_start
                 if analyze_result:
                     if isinstance(analyze_result, str):
                         analysis['composition_analysis'] = analyze_result
@@ -389,20 +423,26 @@ class ImageAnalyzer:
             # Base Florence-2 analysis (existing code)
             
             # Get detailed caption
+            task_start = time.time()
             caption_result = self._run_florence_task(image, "<DETAILED_CAPTION>")
+            task_times['caption'] = time.time() - task_start
             if caption_result:
                 raw_description = caption_result.get('<DETAILED_CAPTION>', 'No description available')
                 analysis['description'] = self._clean_description(raw_description)
             
             # Get objects with bounding boxes
+            task_start = time.time()
             od_result = self._run_florence_task(image, "<OD>")
+            task_times['object_detection'] = time.time() - task_start
             if od_result and '<OD>' in od_result:
                 objects_data = od_result['<OD>']
                 analysis['objects'] = self._process_objects(objects_data)
             
             # Analyze regions for composition
             if detailed:
+                task_start = time.time()
                 region_result = self._run_florence_task(image, "<DENSE_REGION_CAPTION>")
+                task_times['region_caption'] = time.time() - task_start
                 if region_result and '<DENSE_REGION_CAPTION>' in region_result:
                     analysis['regions'] = region_result['<DENSE_REGION_CAPTION>']
         
@@ -433,8 +473,15 @@ class ImageAnalyzer:
         # analysis['tags'] = self._generate_tags_from_analysis(analysis)
         
         # Add timing info
-        analysis['analysis_time'] = time.time() - start_time
-        logger.info(f"Analysis completed in {analysis['analysis_time']:.2f} seconds")
+        total_time = time.time() - start_time
+        analysis['processing_time'] = f"{total_time:.2f}s"
+        analysis['task_times'] = task_times
+        
+        # Log performance summary
+        logger.info(f"Analysis completed in {total_time:.2f}s")
+        logger.info(f"Model: {self.model_type}, dtype: {self.dtype}, device: {self.device}")
+        if task_times:
+            logger.info(f"Task breakdown: {', '.join([f'{k}: {v:.2f}s' for k, v in task_times.items()])}")
         
         return analysis
     def _test_inference(self):
@@ -1023,31 +1070,81 @@ class ImageAnalyzer:
     
     def get_status(self) -> Dict[str, Any]:
         """Get current analyzer status"""
-        return {
+        status = {
             'mode': 'florence2',
             'device': self.device,
             'gpu_detected': self.detected_gpu,
             'compatibility_mode': self.gpu_compatibility_mode,
             'initialized': self._initialized,
-            'error': self._init_error
+            'error': self._init_error,
+            'model_type': self.model_type,
+            'model_name': self.model_name,
+            'model_id': self.model_id,
+            'loaded': self.model is not None
         }
+        
+        # Add dtype and compilation info if model is loaded
+        if self.model is not None:
+            status['dtype'] = str(self.dtype) if self.dtype else 'unknown'
+            # Check if model is compiled - check multiple attributes
+            status['compiled'] = (
+                hasattr(self.model, '_dynamo_compiled_forward') or
+                hasattr(self.model, '_compiled') or
+                (hasattr(self.model, '_orig_mod') and self.model._orig_mod is not None) or
+                getattr(self.model, '__compiled__', False)
+            )
+            
+            # Get GPU memory usage if on CUDA
+            if self.device == "cuda" and torch.cuda.is_available():
+                try:
+                    allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+                    reserved = torch.cuda.memory_reserved() / 1024**3  # GB
+                    status['gpu_memory'] = {
+                        'allocated_gb': round(allocated, 2),
+                        'reserved_gb': round(reserved, 2)
+                    }
+                except:
+                    pass
+        
+        return status
     
     def unload_model(self):
         """Unload model to free memory"""
-        if self.model is not None:
-            del self.model
+        try:
+            # Move model to CPU first to free GPU memory immediately
+            if self.model is not None:
+                try:
+                    self.model.to('cpu')
+                except:
+                    pass
+                del self.model
+                self.model = None
+            
+            if self.processor is not None:
+                del self.processor
+                self.processor = None
+            
+            self._initialized = False
+            self._init_attempted = False
+            self._init_error = None
+            
+            # Aggressive memory cleanup
+            import gc
+            gc.collect()
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                # Log memory status
+                free_memory = torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)
+                logger.info(f"Model unloaded. Free GPU memory: {free_memory / 1024**3:.2f} GB")
+        except Exception as e:
+            logger.warning(f"Error during model unload: {e}")
+            # Still try to clean up
             self.model = None
-        if self.processor is not None:
-            del self.processor
             self.processor = None
-        self._initialized = False
-        self._init_attempted = False
-        self._init_error = None
-        
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        logger.info("Model unloaded")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     
     def reset_initialization(self):
         """Reset initialization flags to allow retry after error"""

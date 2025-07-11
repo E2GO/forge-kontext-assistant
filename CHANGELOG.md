@@ -1,42 +1,52 @@
 # Changelog
 
-All notable changes to the Kontext Assistant extension will be documented in this file.
-
-## [2.75] - 2025-07-10
-
+## [2.77] - 2025-07-11
 ### Added
-- Full support for PromptGen v2.0 model with all 7 task prompts
-- RTX 5090 GPU compatibility 
-- Comprehensive test suite with 21 new tests
-- Model reset functionality for error recovery
-- Enhanced logging throughout the pipeline
-- Organized documentation structure
-
-### Changed
-- PromptGen v2.0 now uses standard post-processing for proper output
-- RTX 4090/5090 now use GPU by default (removed forced CPU mode)
-- Improved model switching with proper cache management
-- Enhanced thread safety with locks
-- Better error handling with fallback mechanisms
+- Performance Info display panel with model details and metrics
+- Configurable auto-unload settings (0-300s delay)
+- PyTorch version display in diagnostics
+- Better torch.compile error handling
+- Image validation utilities for Gradio compatibility
 
 ### Fixed
-- PromptGen v2.0 "minimal output" issue - now generates full captions and tags
-- UI error "8 values expected, 7 received" when no images loaded
-- Model loading failures on RTX 5090
+- h11 Content-Length errors via cache cleanup script
+- Image loading issues with validation layer
+- Performance data capture for dual-model system
+
+### Changed
+- Default unload delay: 15s → 60s for better performance
+- Memory threshold: 90% → 75% for stability
+- Performance Info accordion collapsed by default
+
+## [2.76] - 2025-01-10
+### Added
+- Refresh button (🔄) for clearing empty image slots
+- Automatic image change detection
+- Clear analysis when images are removed
+- Memory optimization controls
+
+### Fixed
+- GPU memory warnings during model switching
+- Analysis cache invalidation
+
+## [2.75] - 2025-01-09
+### Major Update
+- Implemented dual-model system: Florence-2 Base + PromptGen v2.0
+- Full RTX 5090 GPU support
+- FP16 model prioritization for memory efficiency
+- Automatic dependency installation
+
+### Changed
+- PromptGen v2.0 now primary model for tags and captions
+- Simplified UI - removed model selection options
+- Improved thread safety with locks
+
+### Fixed
+- PromptGen v2.0 output generation
+- Model loading on RTX 5090
 - Memory leaks during model switching
-- Warning about Florence2LanguageForConditionalGeneration
 
 ### Removed
-- 19 temporary debug and test files
-- Forced CPU mode for high-end GPUs
-- Redundant manual output parsing
-
-### Performance
-- Faster model switching with improved memory management
-- RTX 5090 now runs at full GPU speed
-- Reduced memory usage with proper cleanup
-
-## [2.5] - Previous Version
-- Initial PromptGen v2.0 support (had issues)
-- Basic RTX 4090 compatibility
-- JoyCaption integration
+- JoyCaption support (replaced by PromptGen v2.0)
+- GGUF model support
+- Manual model selection UI

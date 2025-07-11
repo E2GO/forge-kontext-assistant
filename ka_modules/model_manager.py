@@ -28,7 +28,7 @@ class ModelManager:
             return
             
         self.models = {}
-        self.memory_threshold = 0.9  # 90% VRAM usage threshold
+        self.memory_threshold = 0.75  # 75% VRAM usage threshold - lowered for better memory headroom
         self._initialized = True
         logger.info("ModelManager initialized")
     
@@ -53,6 +53,13 @@ class ModelManager:
         if model_info["loaded"] and not force:
             logger.info(f"Model {name} already loaded")
             return True
+        
+        # Aggressive memory cleanup before loading
+        logger.info(f"Performing aggressive memory cleanup before loading {name}")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
         
         # Check memory before loading
         if not self._check_memory_available():
@@ -119,8 +126,12 @@ class ModelManager:
             # Get memory info
             total_memory = torch.cuda.get_device_properties(0).total_memory
             allocated_memory = torch.cuda.memory_allocated(0)
+            free_memory = total_memory - allocated_memory
             
             usage_ratio = allocated_memory / total_memory
+            free_gb = free_memory / 1024**3
+            
+            logger.debug(f"Memory check: {free_gb:.2f}GB free, usage ratio: {usage_ratio:.2%}, threshold: {self.memory_threshold:.2%}")
             
             return usage_ratio < self.memory_threshold
             
@@ -152,9 +163,11 @@ class ModelManager:
         if torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated(0) / 1024**3
             reserved = torch.cuda.memory_reserved(0) / 1024**3
+            free = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)) / 1024**3
             total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            usage_percent = (allocated / total) * 100
             
-            logger.info(f"GPU Memory: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved, {total:.2f}GB total")
+            logger.info(f"GPU Memory: {allocated:.2f}GB allocated ({usage_percent:.1f}%), {free:.2f}GB free, {reserved:.2f}GB reserved, {total:.2f}GB total")
     
     def set_model_priority(self, name: str, priority: int):
         """Set model priority (higher = more important)"""
