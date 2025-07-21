@@ -1,0 +1,74 @@
+{
+  "prompt_prefixes": {
+    "style_transfer": ["convert to", "make as", "transform into", "render in"],
+    "object_manipulation": ["add", "remove", "replace", "modify"],
+    "enhancement": ["enhance", "improve", "refine", "polish"],
+    "restoration": ["restore", "fix", "repair", "recover"],
+    "lighting": ["change lighting to", "illuminate with", "light using"],
+    "composition": ["extend", "expand", "continue", "complete"]
+  },
+  
+  "quality_modifiers": {
+    "high_quality": ["professional quality", "high-end result", "premium output", "masterful execution"],
+    "authentic": ["authentic appearance", "genuine look", "realistic result", "true-to-life"],
+    "artistic": ["artistic interpretation", "creative vision", "stylized approach", "aesthetic excellence"],
+    "technical": ["technically accurate", "precise execution", "detailed accuracy", "flawless technique"]
+  },
+  
+  "consistency_phrases": {
+    "preserve": ["while maintaining", "while preserving", "keeping intact", "without changing"],
+    "match": ["matching the original", "consistent with", "in harmony with", "aligned with"],
+    "blend": ["seamlessly blending", "naturally integrating", "smoothly transitioning", "perfectly merging"]
+  },
+  
+  "common_mistakes_to_avoid": [
+    "Don't use vague terms like 'better' or 'nice'",
+    "Avoid contradictory instructions",
+    "Don't overload with too many style modifiers",
+    "Be specific about what to preserve",
+    "Use action verbs at the beginning",
+    "Keep prompts under 512 tokens (FLUX.1 Kontext limit)",
+    "Use exact color names instead of descriptive terms",
+    "Directly name subjects instead of pronouns",
+    "Avoid 'transform' if you want partial changes"
+  ],
+  
+  "prompt_structure_templates": {
+    "basic": "{action} {target} {method} {quality}",
+    "detailed": "{action} {target} {method} {quality}, {preservation}",
+    "complex": "{action} {target} {method} {quality}, {preservation} and {additional_requirements}"
+  },
+  
+  "flux_kontext_guidelines": {
+    "be_specific": {
+      "description": "Use precise, specific language",
+      "good_examples": ["red Ferrari", "woman with short black hair", "golden sunset lighting"],
+      "bad_examples": ["nice car", "her", "better lighting"]
+    },
+    "action_verbs": {
+      "description": "Start with clear action verbs",
+      "recommended": ["change", "replace", "add", "remove", "convert", "modify"],
+      "avoid": ["make better", "improve somehow", "fix it"]
+    },
+    "preservation": {
+      "description": "Explicitly state what to keep unchanged",
+      "examples": [
+        "while maintaining original composition",
+        "keeping facial features unchanged",
+        "preserving the background elements"
+      ]
+    },
+    "iterative_approach": {
+      "description": "Break complex changes into steps",
+      "example": "First change color, then adjust style, finally add details"
+    },
+    "token_limit": {
+      "description": "FLUX.1 Kontext has a 512 token maximum",
+      "tips": [
+        "Keep prompts concise but specific",
+        "Remove unnecessary adjectives",
+        "Use efficient phrasing"
+      ]
+    }
+  }
+}

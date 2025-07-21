@@ -1,0 +1,33 @@
+# Development and local settings
+.claude/
+CHANGELOG.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+.cache/
+
+# Logs
+*.log

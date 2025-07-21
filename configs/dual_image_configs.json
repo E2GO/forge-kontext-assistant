@@ -1,0 +1,287 @@
+{
+  "note": "FLUX.1 Kontext does not understand 'image 1' or 'image 2' references. Prompts must describe what to combine without explicit image references.",
+  
+  "scenarios": {
+    "style_transfer": {
+      "name": "Style Transfer",
+      "icon": "🎨",
+      "description": "Apply artistic style to content",
+      "template": "Transform into {style_description} style while maintaining {content_description}, {preservation}",
+      "fields": {
+        "style_description": {
+          "label": "Style to Apply",
+          "placeholder": "e.g., Van Gogh's swirling brushstrokes and vibrant colors"
+        },
+        "content_description": {
+          "label": "Content to Preserve",
+          "placeholder": "e.g., the cityscape composition and architecture"
+        }
+      },
+      "defaults": {
+        "preservation": "preserving the original structure and composition"
+      },
+      "examples": [
+        "Transform into impressionist painting style while maintaining the modern architecture",
+        "Apply watercolor aesthetics while preserving the portrait's features",
+        "Convert to anime art style while keeping the original pose and expression"
+      ]
+    },
+    
+    "scene_merge": {
+      "name": "Scene Merging",
+      "icon": "🖼️",
+      "description": "Combine elements from different scenes",
+      "template": "Combine {element1} with {element2}, {integration}",
+      "fields": {
+        "element1": {
+          "label": "Primary Element",
+          "placeholder": "e.g., the person in business attire"
+        },
+        "element2": {
+          "label": "Secondary Element/Background",
+          "placeholder": "e.g., the tropical beach setting"
+        }
+      },
+      "defaults": {
+        "integration": "creating natural lighting and shadow consistency"
+      },
+      "examples": [
+        "Combine the standing figure with the mountain landscape",
+        "Merge the red car with the city street scene",
+        "Integrate the cat with the cozy living room setting"
+      ]
+    },
+    
+    "attribute_blend": {
+      "name": "Attribute Blending",
+      "icon": "✨",
+      "description": "Mix specific attributes from different sources",
+      "template": "Create a composition with {attribute1} and {attribute2}, {balance}",
+      "fields": {
+        "attribute1": {
+          "label": "First Set of Attributes",
+          "placeholder": "e.g., the vibrant color palette and lighting"
+        },
+        "attribute2": {
+          "label": "Second Set of Attributes",
+          "placeholder": "e.g., the geometric composition and sharp lines"
+        }
+      },
+      "defaults": {
+        "balance": "blending them harmoniously"
+      },
+      "examples": [
+        "Create a composition with warm sunset colors and modern architectural forms",
+        "Mix vintage photography aesthetics and contemporary fashion styling",
+        "Blend natural textures and digital art elements"
+      ]
+    },
+    
+    "transformation": {
+      "name": "State Transformation",
+      "icon": "🔄",
+      "description": "Transform between different states or conditions",
+      "template": "Transform {subject} from {state1} to {state2}, {method}",
+      "fields": {
+        "subject": {
+          "label": "What to Transform",
+          "placeholder": "e.g., the landscape"
+        },
+        "state1": {
+          "label": "Starting State",
+          "placeholder": "e.g., summer daylight"
+        },
+        "state2": {
+          "label": "Target State",
+          "placeholder": "e.g., winter night"
+        }
+      },
+      "defaults": {
+        "method": "creating a natural transition"
+      },
+      "examples": [
+        "Transform the city from day to night",
+        "Change the forest from autumn to spring",
+        "Convert the room from messy to organized"
+      ]
+    },
+    
+    "fusion": {
+      "name": "Creative Fusion",
+      "icon": "🔀",
+      "description": "Create unique combinations",
+      "template": "Fuse {concept1} with {concept2} to create {result}, {style}",
+      "fields": {
+        "concept1": {
+          "label": "First Concept",
+          "placeholder": "e.g., mechanical elements"
+        },
+        "concept2": {
+          "label": "Second Concept",
+          "placeholder": "e.g., organic forms"
+        },
+        "result": {
+          "label": "Desired Result",
+          "placeholder": "e.g., a biomechanical creature"
+        }
+      },
+      "defaults": {
+        "style": "in a cohesive and believable manner"
+      },
+      "examples": [
+        "Fuse architectural elements with natural landscapes to create fantasy structures",
+        "Combine vintage and futuristic design elements to create steampunk aesthetics",
+        "Merge realistic and cartoon styles to create unique character designs"
+      ]
+    },
+    
+    "character_merge": {
+      "name": "Character Merging",
+      "icon": "👥",
+      "description": "Combine multiple characters in one scene",
+      "template": "Place both {character1} and {character2} together in one scene where they are {arrangement}, {interaction}",
+      "fields": {
+        "character1": {
+          "label": "First Character Description",
+          "placeholder": "e.g., cute 3D character"
+        },
+        "character2": {
+          "label": "Second Character Description",
+          "placeholder": "e.g., anime style character"
+        },
+        "arrangement": {
+          "label": "Spatial Arrangement",
+          "placeholder": "e.g., hugging"
+        }
+      },
+      "defaults": {
+        "interaction": "maintaining their individual characteristics"
+      },
+      "interaction_presets": [
+        "standing next to each other",
+        "in conversation",
+        "shaking hands",
+        "embracing",
+        "back to back",
+        "one in foreground, one in background",
+        "sitting together",
+        "walking together",
+        "in action poses",
+        "looking at each other",
+        "shoulder to shoulder",
+        "facing opposite directions",
+        "one sitting, one standing",
+        "diagonal positioning",
+        "mirrored poses",
+        "one leaning on the other",
+        "arm in arm",
+        "high five gesture",
+        "one behind the other",
+        "crossed arms facing camera",
+        "looking at same object",
+        "one teaching, one learning",
+        "playful interaction",
+        "formal handshake pose",
+        "casual lean against each other",
+        "synchronized movement",
+        "contrasting poses",
+        "protective stance",
+        "celebratory poses",
+        "contemplative side by side"
+      ],
+      "examples": [
+        "Place both warrior character and mage character together in one scene where they are in battle stance, creating dynamic composition",
+        "Place both bride character and groom character together in one scene where they are standing at altar, with romantic lighting",
+        "Place both superhero and villain together in one scene where they are in confrontation pose, maintaining dramatic tension"
+      ]
+    }
+  },
+  
+  "character_interaction_modifiers": {
+    "friendly": {
+      "name": "Friendly Interaction",
+      "modifiers": [
+        "with warm, friendly body language",
+        "showing positive engagement",
+        "with comfortable spacing",
+        "displaying mutual respect"
+      ]
+    },
+    "romantic": {
+      "name": "Romantic Interaction",
+      "modifiers": [
+        "with intimate positioning",
+        "showing romantic chemistry",
+        "with soft, warm lighting",
+        "creating emotional connection"
+      ]
+    },
+    "professional": {
+      "name": "Professional Interaction",
+      "modifiers": [
+        "maintaining professional distance",
+        "with formal body language",
+        "in business-appropriate poses",
+        "showing collaborative engagement"
+      ]
+    },
+    "dramatic": {
+      "name": "Dramatic Interaction",
+      "modifiers": [
+        "with dramatic tension",
+        "creating visual conflict",
+        "with dynamic positioning",
+        "emphasizing contrast between characters"
+      ]
+    },
+    "casual": {
+      "name": "Casual Interaction",
+      "modifiers": [
+        "in relaxed, natural poses",
+        "with casual body language",
+        "showing comfortable familiarity",
+        "creating everyday scene"
+      ]
+    }
+  },
+  
+  "integration_methods": {
+    "natural": {
+      "name": "Natural Integration",
+      "description": "Realistic blending",
+      "modifiers": [
+        "with consistent lighting and shadows",
+        "maintaining photorealistic quality",
+        "with natural color harmony",
+        "preserving realistic proportions"
+      ]
+    },
+    "artistic": {
+      "name": "Artistic Integration",
+      "description": "Creative blending",
+      "modifiers": [
+        "with artistic interpretation",
+        "using creative color blending",
+        "with stylized transitions",
+        "emphasizing aesthetic harmony"
+      ]
+    },
+    "seamless": {
+      "name": "Seamless Integration",
+      "description": "Invisible blending",
+      "modifiers": [
+        "with imperceptible transitions",
+        "creating perfect continuity",
+        "with flawless edge blending",
+        "maintaining consistent style throughout"
+      ]
+    }
+  },
+  
+  "best_practices": [
+    "Describe visual elements rather than referencing image numbers",
+    "Be specific about what attributes to combine",
+    "Use descriptive language for styles and elements",
+    "Focus on the desired outcome rather than the source"
+  ]
+}

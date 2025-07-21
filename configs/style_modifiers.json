@@ -1,0 +1,189 @@
+{
+  "categories": {
+    "lighting_integration": {
+      "name": "Lighting & Environment Integration",
+      "icon": "💡",
+      "modifiers": [
+        {
+          "id": "match_lighting",
+          "name": "Match lighting and shadows",
+          "value": "matching the lighting and shadows",
+          "description": "Integrates object with scene lighting"
+        },
+        {
+          "id": "seamless_blend",
+          "name": "Blend seamlessly with environment",
+          "value": "blending seamlessly with environment",
+          "description": "Natural integration into the scene"
+        },
+        {
+          "id": "realistic_shadows",
+          "name": "Cast realistic shadows",
+          "value": "casting realistic shadows",
+          "description": "Adds proper shadow casting"
+        },
+        {
+          "id": "reflect_surroundings",
+          "name": "Reflect surroundings",
+          "value": "reflecting surroundings",
+          "description": "Adds environmental reflections"
+        },
+        {
+          "id": "adapt_atmosphere",
+          "name": "Adapt to scene atmosphere",
+          "value": "adapting to scene atmosphere",
+          "description": "Matches mood and atmosphere"
+        }
+      ]
+    },
+    "positioning": {
+      "name": "Positioning & Composition",
+      "icon": "📍",
+      "modifiers": [
+        {
+          "id": "foreground",
+          "name": "In foreground, prominently",
+          "value": "in the foreground, prominently featured",
+          "description": "Places object in front"
+        },
+        {
+          "id": "background",
+          "name": "In background, subtly",
+          "value": "in the background, subtly integrated",
+          "description": "Places object behind main elements"
+        },
+        {
+          "id": "central_focus",
+          "name": "As central focus",
+          "value": "as the central focus",
+          "description": "Makes object the main subject"
+        },
+        {
+          "id": "balanced",
+          "name": "Balanced with existing elements",
+          "value": "balanced with existing elements",
+          "description": "Harmonious placement"
+        },
+        {
+          "id": "rule_of_thirds",
+          "name": "Following rule of thirds",
+          "value": "following rule of thirds",
+          "description": "Professional composition"
+        }
+      ]
+    },
+    "style_matching": {
+      "name": "Style Integration",
+      "icon": "🎨",
+      "modifiers": [
+        {
+          "id": "match_style",
+          "name": "Match artistic style",
+          "value": "matching the artistic style",
+          "description": "Consistent art style"
+        },
+        {
+          "id": "complementary_colors",
+          "name": "With complementary colors",
+          "value": "with complementary colors",
+          "description": "Color harmony"
+        },
+        {
+          "id": "scene_consistency",
+          "name": "Maintain scene consistency",
+          "value": "maintaining scene consistency",
+          "description": "Overall coherence"
+        },
+        {
+          "id": "similar_texture",
+          "name": "With similar texture quality",
+          "value": "with similar texture quality",
+          "description": "Texture matching"
+        },
+        {
+          "id": "harmonious",
+          "name": "In harmony with composition",
+          "value": "in harmony with composition",
+          "description": "Visual balance"
+        }
+      ]
+    },
+    "effects": {
+      "name": "Effects & Interactions",
+      "icon": "✨",
+      "modifiers": [
+        {
+          "id": "motion_blur",
+          "name": "With motion blur",
+          "value": "with motion blur effect",
+          "description": "Dynamic movement"
+        },
+        {
+          "id": "transparent",
+          "name": "Partially transparent",
+          "value": "partially transparent/translucent",
+          "description": "See-through effect"
+        },
+        {
+          "id": "interactive",
+          "name": "Interacting with elements",
+          "value": "interacting with other elements",
+          "description": "Physical interaction"
+        },
+        {
+          "id": "depth_blur",
+          "name": "With depth of field blur",
+          "value": "with depth of field blur",
+          "description": "Focus effect"
+        },
+        {
+          "id": "glowing",
+          "name": "Glowing/emitting light",
+          "value": "glowing/emitting light",
+          "description": "Light emission"
+        }
+      ]
+    },
+    "scale": {
+      "name": "Scale & Proportions",
+      "icon": "📏",
+      "modifiers": [
+        {
+          "id": "proportional",
+          "name": "Proportionally scaled",
+          "value": "proportionally scaled to scene",
+          "description": "Natural sizing"
+        },
+        {
+          "id": "realistic_size",
+          "name": "Realistic size",
+          "value": "maintaining realistic size",
+          "description": "True-to-life proportions"
+        },
+        {
+          "id": "enlarged",
+          "name": "Enlarged for emphasis",
+          "value": "enlarged for emphasis",
+          "description": "Dramatic sizing"
+        },
+        {
+          "id": "miniature",
+          "name": "Miniaturized version",
+          "value": "miniaturized version",
+          "description": "Smaller scale"
+        },
+        {
+          "id": "oversized",
+          "name": "Dramatically oversized",
+          "value": "dramatically oversized",
+          "description": "Giant scale"
+        }
+      ]
+    }
+  },
+  "custom_modifiers": {
+    "name": "Custom",
+    "icon": "✏️",
+    "description": "Enter your own style modifier"
+  }
+}

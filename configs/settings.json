@@ -1,0 +1,41 @@
+{
+  "kontext_processing": {
+    "max_context_images": 3,
+    "min_image_size": 64,
+    "patch_size": 2,
+    "vae_scale_factor": 8,
+    "max_image_dimension_warning": 2048,
+    "fill_model_resolution": 512
+  },
+  "analysis": {
+    "cache_max_size": 10,
+    "default_unload_delay": 60,
+    "enable_auto_unload": true,
+    "default_analysis_mode": "standard",
+    "force_cpu_default": false
+  },
+  "prompt_validation": {
+    "min_prompt_length": 10,
+    "max_tokens": 512,
+    "warn_on_unfilled_placeholders": true,
+    "warn_threshold_tokens": 450,
+    "show_token_count": true
+  },
+  "ui": {
+    "button_size": "40px",
+    "show_performance_info": true,
+    "default_accordions_open": {
+      "image_analysis": false,
+      "prompt_generation": false,
+      "advanced_settings": false,
+      "performance_info": false,
+      "prompt_builder": false
+    },
+    "tooltips_enabled": true
+  },
+  "memory_management": {
+    "clear_cache_on_unload": true,
+    "max_cached_analyses": 50,
+    "image_hash_size_limit_mb": 10
+  }
+}

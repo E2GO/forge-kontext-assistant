@@ -1,0 +1,246 @@
+{
+  "note": "Unified arrangement system that combines scenario presets with spatial arrangements",
+  
+  "arrangements": {
+    "team_photo": {
+      "name": "Team Photo",
+      "icon": "📸",
+      "category": "Professional",
+      "options": [
+        {
+          "name": "Professional Formation",
+          "value": "standing in professional formation with confident poses",
+          "interaction": ""
+        },
+        {
+          "name": "Casual Group",
+          "value": "in casual group setting with relaxed positioning",
+          "interaction": ""
+        },
+        {
+          "name": "Action Team Pose",
+          "value": "in action team pose showing unity and strength",
+          "interaction": ""
+        },
+        {
+          "name": "Height Arrangement",
+          "value": "arranged by height with natural spacing",
+          "interaction": ""
+        }
+      ]
+    },
+    
+    "conversation": {
+      "name": "Conversation",
+      "icon": "💬",
+      "category": "Social",
+      "options": [
+        {
+          "name": "Face to Face",
+          "value": "facing each other",
+          "interaction": "with engaged body language"
+        },
+        {
+          "name": "Table Discussion",
+          "value": "sitting across a table in discussion",
+          "interaction": ""
+        },
+        {
+          "name": "Walking & Talking",
+          "value": "walking and talking side by side",
+          "interaction": ""
+        },
+        {
+          "name": "Animated Discussion",
+          "value": "in animated discussion",
+          "interaction": "with expressive gestures"
+        }
+      ]
+    },
+    
+    "romantic": {
+      "name": "Romantic",
+      "icon": "💕",
+      "category": "Romantic",
+      "options": [
+        {
+          "name": "Dancing",
+          "value": "dancing together in elegant pose",
+          "interaction": ""
+        },
+        {
+          "name": "Sunset Walk",
+          "value": "walking hand in hand at sunset",
+          "interaction": ""
+        },
+        {
+          "name": "Intimate Moment",
+          "value": "sharing intimate moment",
+          "interaction": "with soft lighting"
+        },
+        {
+          "name": "Embrace",
+          "value": "embracing warmly",
+          "interaction": ""
+        }
+      ]
+    },
+    
+    "action": {
+      "name": "Action",
+      "icon": "⚡",
+      "category": "Dynamic",
+      "options": [
+        {
+          "name": "Back to Back",
+          "value": "back-to-back in defensive stance",
+          "interaction": ""
+        },
+        {
+          "name": "Mid-Combat",
+          "value": "mid-combat with dynamic poses",
+          "interaction": ""
+        },
+        {
+          "name": "Protective Stance",
+          "value": "one protecting the other heroically",
+          "interaction": ""
+        },
+        {
+          "name": "Synchronized Action",
+          "value": "in synchronized action moves",
+          "interaction": ""
+        }
+      ]
+    },
+    
+    "casual": {
+      "name": "Casual",
+      "icon": "☕",
+      "category": "Everyday",
+      "options": [
+        {
+          "name": "Cafe Setting",
+          "value": "sitting at cafe table with coffee",
+          "interaction": ""
+        },
+        {
+          "name": "Park Bench",
+          "value": "sharing bench in park setting",
+          "interaction": ""
+        },
+        {
+          "name": "Leaning Chat",
+          "value": "leaning against wall in conversation",
+          "interaction": ""
+        },
+        {
+          "name": "Standing Together",
+          "value": "standing next to each other",
+          "interaction": ""
+        }
+      ]
+    },
+    
+    "artistic": {
+      "name": "Artistic",
+      "icon": "🎨",
+      "category": "Creative",
+      "options": [
+        {
+          "name": "Mirror Poses",
+          "value": "in symmetrical mirror poses",
+          "interaction": ""
+        },
+        {
+          "name": "Golden Ratio",
+          "value": "positioned according to golden ratio",
+          "interaction": ""
+        },
+        {
+          "name": "Diagonal Composition",
+          "value": "creating diagonal line across frame",
+          "interaction": ""
+        },
+        {
+          "name": "Rule of Thirds",
+          "value": "placed using rule of thirds",
+          "interaction": ""
+        }
+      ]
+    },
+    
+    "custom": {
+      "name": "Custom",
+      "icon": "✏️",
+      "category": "Custom",
+      "options": [
+        {
+          "name": "Custom Arrangement",
+          "value": "custom",
+          "interaction": "custom"
+        }
+      ]
+    }
+  },
+  
+  "interaction_styles": {
+    "none": {
+      "name": "No Additional Interaction",
+      "value": ""
+    },
+    "friendly": {
+      "name": "Friendly",
+      "value": "with warm, friendly body language"
+    },
+    "professional": {
+      "name": "Professional", 
+      "value": "maintaining professional demeanor"
+    },
+    "romantic": {
+      "name": "Romantic",
+      "value": "with romantic chemistry"
+    },
+    "dramatic": {
+      "name": "Dramatic",
+      "value": "creating dramatic tension"
+    },
+    "playful": {
+      "name": "Playful",
+      "value": "in playful, fun manner"
+    },
+    "tense": {
+      "name": "Tense",
+      "value": "with visible tension"
+    },
+    "casual": {
+      "name": "Casual",
+      "value": "in relaxed, natural way"
+    }
+  },
+  
+  "integration_methods": {
+    "note": "Integration methods affect how the two images are combined visually",
+    
+    "natural": {
+      "name": "Natural Integration",
+      "description": "Realistic blending with consistent lighting and shadows",
+      "best_for": "Photorealistic results",
+      "modifiers": "with consistent lighting and shadows"
+    },
+    
+    "artistic": {
+      "name": "Artistic Integration",
+      "description": "Creative blending with artistic interpretation",
+      "best_for": "Stylized or artistic compositions",
+      "modifiers": "with artistic interpretation"
+    },
+    
+    "seamless": {
+      "name": "Seamless Integration",
+      "description": "Perfect blending with no visible seams",
+      "best_for": "Professional compositions",
+      "modifiers": "with seamless blending"
+    }
+  }
+}
