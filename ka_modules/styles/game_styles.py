@@ -6,15 +6,15 @@ from .base import StylePreset, StyleCategory
 GAME_STYLES = {
             "arcane": StylePreset(
                 id="arcane",
-                name="Arcane Style",
+                name="Arcane Style", 
                 category=StyleCategory.GAME,
-                description="Fortiche's revolutionary painterly 3D animation from League of Legends",
-                visual_elements=["hand-painted textures", "3D with 2D aesthetic", "steampunk elements", "detailed facial features", "brushstroke visible"],
-                color_characteristics=["rich saturated palette", "neon accents on dark backgrounds", "pink and purple gradients", "atmospheric lighting", "Piltover vs Zaun contrast"],
-                technique_details=["painterly 3D rendering", "manual stylized lighting", "2D effects on 3D models", "projection mapping", "custom shaders", "moving painting aesthetic"],
-                example_prompt="convert to Arcane game animation style with painterly 3D aesthetic, hand-painted textures with visible brushstrokes, rich atmospheric lighting with neon accents, steampunk design elements, detailed character faces with 2D-style shading on 3D forms, dramatic contrast between light and shadow, moving painting quality",
-                compatible_with=["spiderverse", "painterly_3d", "steampunk"],
-                tips=["Emphasize painterly textures", "Use dramatic lighting contrasts", "Add hand-painted details"]
+                description="Fortiche's revolutionary mixed-media animation from League of Legends adult series",
+                visual_elements=["oil painting textures on 3D models", "hand-drawn 2D effects", "rough tactile surfaces", "expressive cel-shaded faces", "living painting aesthetic"],
+                color_characteristics=["Piltover: warm golds and brass tones", "Zaun: toxic greens and purples", "neon hextech blue accents", "deep atmospheric shadows", "dramatic chiaroscuro lighting"],
+                technique_details=["Touche Fortiche hybrid technique", "3D base with 2D overlays", "oil painting environment art", "hand-drawn smoke/fire/explosions", "custom shaders for painterly look", "deliberate imperfections"],
+                example_prompt="convert to Arcane Fortiche animation style mixing 3D models with 2D hand-drawn effects, oil painting textures creating living artwork, rough tactile quality with visible brushstrokes, Piltover golden brass tones contrasting Zaun's toxic green-purple palette, hextech blue neon accents, dramatic chiaroscuro lighting with deep shadows, cel-shaded expressive faces, hand-drawn smoke and particle effects overlaid on 3D",
+                compatible_with=["spiderverse", "oil_painting", "steampunk", "adult_animation"],
+                tips=["Mix 3D base with 2D overlays", "Use oil painting textures", "Add hand-drawn effects for particles", "Create rough, tactile surfaces"]
             ),
             
             "candy_crush": StylePreset(
@@ -151,13 +151,13 @@ GAME_STYLES = {
                 id="isometric",
                 name="Isometric Style",
                 category=StyleCategory.GAME,
-                description="Classic dimetric projection with 2:1 pixel ratio and 30-degree angles",
-                visual_elements=["2:1 pixel ratio", "30-degree angles", "tile-based construction", "no perspective distortion", "grid alignment"],
-                color_characteristics=["depth through color", "atmospheric perspective", "shadow layering", "clear tile separation", "ambient occlusion"],
-                technique_details=["dimetric projection", "45-degree camera", "z-order sorting", "tile optimization", "modular assets"],
-                example_prompt="convert to isometric game style with 2:1 pixel ratio dimetric projection, 30-degree angle tiles, no perspective distortion, depth through atmospheric color, grid-based construction, classic RPG aesthetic",
+                description="True isometric dimetric projection with 2:1 pixel ratio and 26.565-degree camera angle",
+                visual_elements=["2:1 pixel ratio dimetric projection", "26.565-degree tile angle (arctan 1/2)", "45-degree horizontal rotation", "tile-based grid construction", "no perspective distortion"],
+                color_characteristics=["atmospheric perspective for depth", "darker colors receding", "clear tile edge separation", "consistent lighting angle", "subtle ambient occlusion"],
+                technique_details=["camera: 45° yaw, 30° pitch", "perfect pixel alignment", "z-order depth sorting", "orthographic projection", "modular tile system"],
+                example_prompt="convert to true isometric game style, camera positioned at 45-degree horizontal rotation and 30-degree downward tilt, 2:1 pixel ratio dimetric projection creating 26.565-degree angles, tile-based grid construction, orthographic view with no perspective distortion, atmospheric color gradients for depth, classic isometric RPG aesthetic maintaining original subject composition",
                 compatible_with=["strategy", "rpg", "city_builder"],
-                tips=["Maintain 2:1 ratio", "Use atmospheric perspective", "Align to grid"]
+                tips=["Maintain exact 2:1 pixel ratio", "Use 45° horizontal, 30° vertical camera", "Align everything to isometric grid"]
             ),
             
             "league_of_legends": StylePreset(
@@ -216,13 +216,13 @@ GAME_STYLES = {
                 id="persona5",
                 name="Persona 5 Style",
                 category=StyleCategory.GAME,
-                description="Stylish JRPG with punk aesthetics and dynamic UI-inspired visuals",
-                visual_elements=["oblique angles", "papercutting aesthetic", "halftone patterns", "dynamic UI elements", "silhouette art"],
-                color_characteristics=["red, black, white palette", "high contrast", "passionate red dominance", "monochrome with accents", "punk aesthetics"],
-                technique_details=["angular design language", "constant UI animation", "manga panel layouts", "typography integration", "stylish transitions"],
-                example_prompt="convert to Persona 5 game style with bold red, black and white color scheme, oblique angular shapes, halftone character silhouettes, dynamic UI elements, punk rebellion aesthetic, high contrast papercutting visual style",
+                description="Stylish JRPG with punk rebellion aesthetics, manga-inspired UI, and explosive visual design",
+                visual_elements=["oblique angular shapes everywhere", "halftone silhouettes", "graffiti-style text explosions", "irregular UI shapes", "manga panel cutouts"],
+                color_characteristics=["strict red/black/white only", "NO other colors except HP/MP", "high contrast everywhere", "black on white text mix", "red as passion/energy"],
+                technique_details=["over-exaggerated typography", "lazy pulsing UI energy", "prison garb motifs", "transforming shape animations", "Pop art meets noir"],
+                example_prompt="convert to Persona 5 game visual style, STRICT red/black/white color palette (no other colors), explosive graffiti-style text in irregular oblique shapes, halftone pattern character silhouettes, manga panel composition, high contrast punk rebellion aesthetic, oversized typography mixing upper/lowercase, prison ball-and-chain motifs, dynamic angular UI elements pulsing with youthful energy",
                 compatible_with=["jrpg", "anime", "stylish"],
-                tips=["Use red/black/white only", "Add oblique angles", "Include halftone patterns"]
+                tips=["ONLY red/black/white colors", "Make text explosive and irregular", "Add prison/rebellion symbolism"]
             ),
             
             "pixel_art": StylePreset(
@@ -242,39 +242,39 @@ GAME_STYLES = {
                 id="ps1_graphics",
                 name="PS1 Graphics",
                 category=StyleCategory.GAME,
-                description="Low-poly 3D with vertex snapping and texture warping artifacts",
-                visual_elements=["~500 triangle models", "vertex color lighting", "texture warping", "polygon jittering", "jagged edges"],
-                color_characteristics=["limited texture resolution", "vertex color blending", "no texture filtering", "dithered transparency", "flat shading"],
-                technique_details=["affine texture mapping", "no z-buffer", "vertex snapping", "Gouraud shading", "low resolution"],
-                example_prompt="convert to PS1 game low-poly graphics style with ~500 triangle character models, vertex color lighting, texture warping artifacts, polygon jittering, pixelated textures, no texture filtering, retro 3D aesthetic",
-                compatible_with=["retro_3d", "horror_game", "nostalgic"],
-                tips=["Keep poly count very low", "Add texture warping", "Use vertex colors"]
+                description="Authentic PlayStation 1 low-poly 3D with technical limitations creating distinctive visual artifacts",
+                visual_elements=["230-540 triangle characters like original Lara Croft", "triangular pointy chest geometry", "sharp angular edges everywhere", "vertex snapping to pixel grid", "affine texture warping", "polygon sorting errors"],
+                color_characteristics=["Gouraud vertex color shading", "256-color CLUT textures", "no texture filtering (pixelated)", "15-bit color depth (32,768 colors)", "heavy dithering patterns for gradients"],
+                technique_details=["no Z-buffer (depth sorting issues)", "integer vertex positions causing jitter", "2D affine texture mapping creating wobbly textures", "single global light simulation", "dynamic polygon subdivision like Tomb Raider"],
+                example_prompt="convert to authentic lowpoly 3D graphics from 1996. Low primitive blocky details, visible aliasing with jagged edges, triangulated, no lighting, muted desaturated simple shading. 320x240 resolution aesthetic",
+                compatible_with=["retro_3d", "tomb_raider", "nostalgic"],
+                tips=["Reference original Lara Croft's angular design", "Emphasize triangular/pointy geometry", "Add wobbly texture warping", "Use heavy dithering"]
             ),
             
             "red_dead": StylePreset(
                 id="red_dead",
-                name="Red Dead Redemption Style",
+                name="Red Dead Redemption Poster Style",
                 category=StyleCategory.GAME,
-                description="Photorealistic western with Hudson River School landscape painting influence",
-                visual_elements=["photorealistic textures", "diverse terrains", "period-accurate details", "atmospheric weather", "wildlife"],
-                color_characteristics=["natural earth tones", "golden hour lighting", "dusty atmospherics", "muted color grading", "organic shadows"],
-                technique_details=["photogrammetry assets", "volumetric clouds", "dynamic weather", "realistic materials", "atmospheric perspective"],
-                example_prompt="convert to Red Dead Redemption game photorealistic western style, natural lighting inspired by Hudson River School paintings, dusty atmospheric effects, period-accurate details, golden hour lighting, realistic terrain with organic shadows",
-                compatible_with=["western", "realistic", "period_piece"],
-                tips=["Use natural lighting", "Add atmospheric dust", "Include period details"]
+                description="Vintage western movie poster art style inspired by Red Dead Redemption's promotional materials",
+                visual_elements=["dramatic character poses", "layered composition", "western iconography", "vintage poster layout", "silhouettes against sunsets"],
+                color_characteristics=["sepia and amber tones", "weathered parchment texture", "sunset orange gradients", "dusty desaturated palette", "aged paper yellowing"],
+                technique_details=["Drew Struzan influence", "painted illustration style", "vintage printing effects", "dramatic storytelling composition", "classic western poster design"],
+                example_prompt="convert to Red Dead Redemption poster art style, vintage western movie poster aesthetic, sepia-toned with weathered parchment texture, dramatic character composition like classic western films, sunset silhouettes, painted illustration technique inspired by Drew Struzan, aged paper effects with yellowing, layered narrative elements, dusty amber color grading, 1960s-70s western movie poster design",
+                compatible_with=["western", "vintage", "poster_art"],
+                tips=["Add weathered paper texture", "Use sunset/sepia tones", "Layer multiple story elements"]
             ),
             
             "royal_match": StylePreset(
                 id="royal_match",
                 name="Royal Match Style",
                 category=StyleCategory.GAME,
-                description="Elegant casual match-3 game art with royal theme",
-                visual_elements=["luxurious details", "royal decorations", "golden accents", "ornate patterns"],
-                color_characteristics=["rich jewel tones", "purple and gold", "royal blue", "sparkling highlights"],
-                technique_details=["polished 3D renders", "baroque ornaments", "regal atmosphere", "match-3 aesthetics"],
-                example_prompt="convert to Royal Match game style with luxurious royal theme, ornate golden decorations, rich jewel tone colors, polished 3D renders, and elegant match-3 game aesthetic",
-                compatible_with=["candy_crush", "playrix_style", "puzzle_game"],
-                tips=["Add royal decorative elements", "Use purple and gold prominently"]
+                description="Dream Games' distinctive stylized 3D art with Disney-esque characters and smooth, polished rendering",
+                visual_elements=["smooth curved forms", "no sharp edges anywhere", "Disney-like character proportions", "oversized game pieces", "castle-themed elements"],
+                color_characteristics=["vibrant but balanced palette", "rich royal purples and golds", "welcoming warm tones", "sparkling jewel effects", "soft ambient lighting"],
+                technique_details=["stylized 3D rendering", "retro-modern blend", "exaggerated but grounded", "handcrafted personality", "polished casual aesthetic"],
+                example_prompt="convert to Royal Match game art style, smooth curved 3D forms with absolutely no sharp edges, Disney-esque character proportions (slightly exaggerated but appealing), vibrant colors balanced with real-world grounding, castle-themed decorative elements (crowns, shields, books), oversized distinctive game pieces, welcoming joyful atmosphere, polished stylized 3D rendering with handcrafted personality, retro charm with contemporary polish",
+                compatible_with=["candy_crush", "playrix_style", "disney_style"],
+                tips=["Keep everything smooth and curved", "Disney-like appealing proportions", "Balance stylization with realism"]
             ),
             
             "zelda_botw": StylePreset(
