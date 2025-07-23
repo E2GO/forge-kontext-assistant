@@ -60,10 +60,11 @@ FLUX.1 Kontext is a specialized version of the FLUX.1 model capable of working w
 5. **Composition**: Focus on element arrangement
 
 ### 🎨 Prompt Builder
-- **140+ styles and modifiers**
-- **25 style presets** in 5 categories
-- **8 scenarios** for dual-image workflows
-- **100+ variations** for character spatial arrangements
+- **Hundreds of styles** across 14 comprehensive categories
+- **Material & Environment transforms** for creative effects
+- **10 scenarios** including dual-image workflows
+- **Multiple arrangement options** for dual-image mode
+- **User prompt management** system
 
 ### 🚀 Performance Optimization
 - RTX 4090/5090 support with automatic FP16
@@ -128,10 +129,10 @@ pip install -r requirements.txt
 ### Basic Workflow: Change Image Style
 
 1. **Load your image** in Forge FluxKontext Pro
-2. **Open tab** "🤖 Kontext Assistant"
-3. **Select** "Change Style" from Task Type dropdown
-4. **Type your desired style** (e.g., "oil painting", "anime", "photorealistic")
-5. **Click** "Generate FLUX.1 Kontext Prompt"
+2. **Open** "🎨 Prompt Builder" section
+3. **Select** "Style Transfer" from Scenario dropdown
+4. **Choose styles** from extensive categories or type custom style
+5. **Click** "Build Prompt" to generate optimized prompt
 6. **Click** "Generate" button to create your styled image
 
 ### When to Use Image Analysis?
@@ -153,11 +154,12 @@ Not sure what you're seeing in the image? Don't know what something is called or
 - **Analysis Results**: Results with detailed description
 
 #### 2. Prompt Builder
-- **Task Type**: 9 task types for different scenarios
-- **Style Modifiers**: Style modifiers for objects
-- **Dual-Image Mode**: Special scenarios for 2 images
-- **Character Arrangement**: Character placement in scene
-- **Integration Method**: Element combination method
+- **Scenario Selection**: 10 scenarios for different tasks
+- **Style Library**: 14 categories with hundreds of styles
+- **Dual-Image Mode**: Combine two images with arrangement options
+- **Material/Environment Transforms**: Creative transformation effects
+- **Token Counter**: Real-time token tracking
+- **Direct Generation**: Generate from within Prompt Builder
 
 #### 3. Advanced Settings
 - **Prompt Templates**: Prompt templates
@@ -165,17 +167,18 @@ Not sure what you're seeing in the image? Don't know what something is called or
 - **Auto-unload**: Model auto-unload settings
 - **Performance Info**: Performance information
 
-### Task Types
+### Scenarios
 
-1. **Enhance Details**: Improve details and quality
-2. **Change Style**: Change artistic style
-3. **Modify Elements**: Modify individual elements
-4. **Add Objects**: Add new objects
-5. **Remove Objects**: Remove objects
-6. **Change Environment**: Change surroundings
-7. **Combine Elements**: Combine elements from different images
-8. **Create Variations**: Create variations
-9. **Custom**: Fully custom prompt
+1. **Style Transfer**: Apply artistic styles to images
+2. **Add/Remove Object**: Add new elements or remove unwanted ones
+3. **Replace Object**: Transform one object into another
+4. **Change Pose**: Modify character poses
+5. **Change Emotion**: Alter facial expressions
+6. **Change Lighting**: Adjust lighting and mood
+7. **Enhance/Restore Image**: Improve quality and details
+8. **Extend Canvas**: Expand image boundaries (Outpainting)
+9. **Dual-Image Mode**: Combine two images creatively
+10. **User Prompts**: Use saved custom prompts
 
 ### Token Limitations
 
@@ -266,6 +269,17 @@ forge-kontext-assistant/
 │   ├── image_analyzer.py   # Florence-2 handling
 │   ├── prompt_builder.py   # Prompt generation
 │   ├── token_utils.py      # Token counting
+│   ├── styles/             # Style library modules
+│   │   ├── anime_manga_styles.py
+│   │   ├── art_movements_styles.py
+│   │   ├── cartoon_styles.py
+│   │   ├── cultural_styles.py
+│   │   ├── digital_art_styles.py
+│   │   ├── environment_transform_styles.py
+│   │   ├── famous_artists_styles.py
+│   │   ├── material_transform_styles.py
+│   │   ├── photography_styles.py
+│   │   └── traditional_art_styles.py
 │   └── ...                 # Other modules
 ├── configs/
 │   ├── settings.json       # Main settings
