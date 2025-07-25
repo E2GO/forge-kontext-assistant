@@ -109,7 +109,7 @@ FLUX.1 Kontext is a specialized version of the FLUX.1 model capable of working w
 1. Clone the repository to extensions folder:
 ```bash
 cd stable-diffusion-webui-forge/extensions
-git clone https://github.com/yourusername/forge-kontext-assistant
+git clone https://github.com/E2GO/forge-kontext-assistant
 ```
 
 2. Restart WebUI - dependencies will install automatically
