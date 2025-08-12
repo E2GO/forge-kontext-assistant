@@ -23,6 +23,7 @@ from .concept_art_styles import CONCEPT_ART_STYLES
 from .photography_styles import PHOTOGRAPHY_STYLES
 from .material_transform_styles import MATERIAL_TRANSFORM_STYLES
 from .environment_transform_styles import ENVIRONMENT_TRANSFORM_STYLES
+from .reference_styles import FROM_REFERENCE_STYLES
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ ALL_STYLES.update(CONCEPT_ART_STYLES)
 ALL_STYLES.update(PHOTOGRAPHY_STYLES)
 ALL_STYLES.update(MATERIAL_TRANSFORM_STYLES)
 ALL_STYLES.update(ENVIRONMENT_TRANSFORM_STYLES)
+ALL_STYLES.update(FROM_REFERENCE_STYLES)
 
 
 class StyleLibrary:
@@ -100,7 +102,8 @@ class StyleLibrary:
     def build_style_prompt(self, 
                           style_ids: List[str],
                           modifiers: Optional[Dict[str, str]] = None,
-                          preserve_elements: Optional[List[str]] = None) -> str:
+                          preserve_elements: Optional[List[str]] = None,
+                          reference_prompt: Optional[str] = None) -> str:
         """
         Build a complete style prompt from style IDs and modifiers
         
@@ -108,6 +111,7 @@ class StyleLibrary:
             style_ids: List of style preset IDs to combine
             modifiers: Dictionary of modifier types and values
             preserve_elements: List of elements to preserve from original
+            reference_prompt: Text to replace [prompt] placeholder in reference styles
             
         Returns:
             Complete style transformation prompt
@@ -125,7 +129,16 @@ class StyleLibrary:
             return ""
         
         # Start with primary style description
-        prompt_parts = [primary_style.example_prompt]
+        base_prompt = primary_style.example_prompt
+        
+        # Replace [prompt] placeholder if this is a reference style
+        if primary_style.category == StyleCategory.FROM_REFERENCE and reference_prompt:
+            base_prompt = base_prompt.replace("[prompt]", reference_prompt.strip())
+        elif primary_style.category == StyleCategory.FROM_REFERENCE:
+            # If no replacement text provided, remove the placeholder
+            base_prompt = base_prompt.replace(" [prompt]", "").replace("[prompt]", "")
+        
+        prompt_parts = [base_prompt]
         
         # Add additional styles if mixing
         if len(style_ids) > 1:

@@ -34,6 +34,9 @@ class StyleCategory(Enum):
     # Photography and Effects
     PHOTOGRAPHY = "photography"  # Photography styles and techniques
     
+    # Reference-based
+    FROM_REFERENCE = "from_reference"  # Use loaded image as style reference
+    
     # User Created
     CUSTOM = "custom"  # User saved styles
 

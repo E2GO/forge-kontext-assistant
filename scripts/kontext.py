@@ -1569,6 +1569,15 @@ class ForgeKontextUnified(scripts.Script):
                                 visible=False
                             )
                             
+                            # Prompt field for reference styles
+                            style_reference_prompt = gradio.Textbox(
+                                label="Complete the prompt",
+                                placeholder="e.g., a cat portrait, futuristic cityscape, fantasy warrior",
+                                visible=False,
+                                interactive=True,
+                                info="This will replace [prompt] in the style template"
+                            )
+                            
                             # Preserve options
                             preserve_elements = gradio.CheckboxGroup(
                                 label="Preserve from original",
@@ -2320,15 +2329,29 @@ class ForgeKontextUnified(scripts.Script):
                     
                     # Update style presets based on category
                     def update_style_presets(category):
-                        """Update style preset dropdown based on category"""
+                        """Update style preset dropdown based on category and manage reference prompt field"""
                         try:
                             styles = style_library.get_styles_by_category(StyleCategory(category))
                             choices = [(style.name, style.id) for style in styles]
                             logger.info(f"Updated style presets for {category}: {len(choices)} styles")
-                            return gradio.update(choices=choices, value=choices[0][1] if choices else None)
+                            
+                            # Check if it's FROM_REFERENCE category
+                            is_reference = (category == StyleCategory.FROM_REFERENCE.value)
+                            
+                            # If FROM_REFERENCE, show prompt field and clear preserve checkboxes
+                            # Otherwise hide prompt field and use default preserve values
+                            return (
+                                gradio.update(choices=choices, value=choices[0][1] if choices else None),  # style_preset
+                                gradio.update(visible=is_reference),  # style_reference_prompt
+                                gradio.update(value=[] if is_reference else ["subject identity", "composition"])  # preserve_elements
+                            )
                         except Exception as e:
                             logger.error(f"Error updating style presets: {e}")
-                            return gradio.update(choices=[], value=None)
+                            return (
+                                gradio.update(choices=[], value=None),  # style_preset
+                                gradio.update(visible=False),  # style_reference_prompt
+                                gradio.update(value=["subject identity", "composition"])  # preserve_elements
+                            )
                     
                     # Update style modifier presets based on category
                     def update_style_modifier_presets(category):
@@ -2389,14 +2412,15 @@ class ForgeKontextUnified(scripts.Script):
                             # 0: object_field, 1: object_mode, 2: position_field, 3: style_modifier_field,
                             # 4: style_modifier_category, 5: style_modifier_preset,
                             # 6: removal_scenario, 7: fill_method,
-                            # 8: style_category, 9: style_preset, 10: style_details, 11: preserve_elements,
-                            # 12: original_object, 13: new_object, 14: maintain_aspects,
-                            # 15: subject_field, 16: new_pose, 17: pose_details,
-                            # 18: emotion_subject, 19: emotion_type, 20: emotion_intensity,
-                            # 21: detail_area, 22: enhancement_type, 23: specific_changes,
-                            # 24: lighting_scenario, 25: lighting_preset, 26: lighting_effects, 27: lighting_adjustments,
-                            # 28: restoration_type, 29: restoration_method, 30: quality_goal,
-                            # 31: outpaint_direction, 32: extension_description, 33: consistency_elements
+                            # 8: style_category, 9: style_preset, 10: style_details, 11: preserve_elements, 12: style_reference_prompt,
+                            # 13: original_object, 14: new_object, 15: maintain_aspects,
+                            # 16: subject_field, 17: new_pose, 18: pose_details,
+                            # 19: emotion_subject, 20: emotion_type, 21: emotion_intensity,
+                            # 22: detail_area, 23: enhancement_type, 24: specific_changes,
+                            # 25: lighting_scenario, 26: lighting_preset, 27: lighting_effects, 28: lighting_adjustments,
+                            # 29: restoration_type, 30: restoration_method, 31: quality_goal,
+                            # 32: outpaint_direction, 33: extension_description, 34: consistency_elements,
+                            # 35-40: dual_image fields, 41-43: character merge fields
                             
                             # Handle combined object manipulation scenario
                             if scenario == "object_manipulation":
@@ -2436,10 +2460,11 @@ class ForgeKontextUnified(scripts.Script):
                                         "style_modifier": inputs[2]
                                         }
                                 elif prompt_type == PromptType.STYLE_TRANSFER:
-                                    # Indices: style_category=8, style_preset=9, style_details=10, preserve_elements=11
+                                    # Indices: style_category=8, style_preset=9, style_details=10, preserve_elements=11, style_reference_prompt=12
                                     style_ids = [inputs[9]] if inputs[9] else []
                                     preserve = inputs[11] if inputs[11] else []
-                                    return style_library.build_style_prompt(style_ids, preserve_elements=preserve)
+                                    reference_prompt = inputs[12] if inputs[12] else None
+                                    return style_library.build_style_prompt(style_ids, preserve_elements=preserve, reference_prompt=reference_prompt)
                                 elif prompt_type == PromptType.OBJECT_REMOVE:
                                     # This should never be reached directly, handled in object_manipulation
                                     # But if it is: object_field=0, fill_method=7
@@ -2449,49 +2474,49 @@ class ForgeKontextUnified(scripts.Script):
                                         }
                                 elif prompt_type == PromptType.OBJECT_REPLACE:
                                     parameters = {
-                                        "original_object": inputs[12],
-                                        "new_object": inputs[13],
-                                        "maintain_aspects": inputs[14]
+                                        "original_object": inputs[13],
+                                        "new_object": inputs[14],
+                                        "maintain_aspects": inputs[15]
                                         }
                                 elif prompt_type == PromptType.POSE_CHANGE:
                                     parameters = {
-                                        "subject": inputs[15],
-                                        "new_pose": inputs[16],
-                                        "additional_details": inputs[17]
+                                        "subject": inputs[16],
+                                        "new_pose": inputs[17],
+                                        "additional_details": inputs[18]
                                         }
                                 elif prompt_type == PromptType.EMOTION_CHANGE:
                                     parameters = {
-                                        "subject": inputs[18],
-                                        "emotion": inputs[19],
-                                        "intensity": inputs[20]
+                                        "subject": inputs[19],
+                                        "emotion": inputs[20],
+                                        "intensity": inputs[21]
                                         }
                                 elif prompt_type == PromptType.DETAIL_ENHANCEMENT:
                                     parameters = {
-                                        "area": inputs[21],
-                                        "enhancement_type": inputs[22],
-                                        "specific_changes": inputs[23]
+                                        "area": inputs[22],
+                                        "enhancement_type": inputs[23],
+                                        "specific_changes": inputs[24]
                                         }
                                 elif prompt_type == PromptType.LIGHTING_CHANGE:
-                                    # Inputs[24] = lighting_scenario, [25] = preset, [26] = effects, [27] = adjustments
-                                    effects_list = inputs[26] if inputs[26] else []
+                                    # Inputs[25] = lighting_scenario, [26] = preset, [27] = effects, [28] = adjustments
+                                    effects_list = inputs[27] if inputs[27] else []
                                     
                                     # Build parameters differently based on whether effects are provided
                                     if effects_list:
                                         effects_str = ", ".join(effects_list)
                                         parameters = {
-                                            "lighting_type": inputs[25] if inputs[25] else inputs[24],
+                                            "lighting_type": inputs[26] if inputs[26] else inputs[25],
                                             "specific_effects": effects_str,
-                                            "adjustments": inputs[27] if inputs[27] else "while maintaining subject details"
+                                            "adjustments": inputs[28] if inputs[28] else "while maintaining subject details"
                                             }
                                     else:
                                         # If no effects, combine lighting type and adjustments directly
                                         parameters = {
-                                            "lighting_type": inputs[25] if inputs[25] else inputs[24],
-                                            "specific_effects": inputs[27] if inputs[27] else "while maintaining subject details",
+                                            "lighting_type": inputs[26] if inputs[26] else inputs[25],
+                                            "specific_effects": inputs[28] if inputs[28] else "while maintaining subject details",
                                             "adjustments": ""  # Empty to avoid double spacing
                                             }
                                 elif prompt_type == PromptType.IMAGE_ENHANCEMENT:
-                                    # Inputs[28] = enhancement_type, [29] = method, [30] = quality_goal
+                                    # Inputs[29] = enhancement_type, [30] = method, [31] = quality_goal
                                     enhancement_map = {
                                             EnhancementScenario.FACIAL_DETAILS.value: "facial features",
                                         EnhancementScenario.EYE_ENHANCEMENT.value: "the eyes",
@@ -2508,14 +2533,14 @@ class ForgeKontextUnified(scripts.Script):
                                         EnhancementScenario.FADED_COLORS.value: "faded colors",
                                         EnhancementScenario.GENERAL_ENHANCEMENT.value: "overall image quality"
                                     }
-                                    enhancement_text = enhancement_map.get(inputs[28], inputs[28])
+                                    enhancement_text = enhancement_map.get(inputs[29], inputs[29])
                                     parameters = {
                                         "enhancement_target": enhancement_text,
-                                        "method": inputs[29],
-                                        "quality_goal": inputs[30]
+                                        "method": inputs[30],
+                                        "quality_goal": inputs[31]
                                         }
                                 elif prompt_type == PromptType.OUTPAINTING:
-                                    # Inputs[31] = direction, [32] = extension_description, [33] = consistency
+                                    # Inputs[32] = direction, [33] = extension_description, [34] = consistency
                                     direction_map = {
                                         OutpaintingDirection.HORIZONTAL.value: "the landscape horizontally",
                                         OutpaintingDirection.VERTICAL.value: "the scene vertically",
@@ -2527,11 +2552,11 @@ class ForgeKontextUnified(scripts.Script):
                                         OutpaintingDirection.WIDESCREEN.value: "to widescreen format",
                                         OutpaintingDirection.SQUARE.value: "to square format"
                                         }
-                                    direction_text = direction_map.get(inputs[31], inputs[31])
+                                    direction_text = direction_map.get(inputs[32], inputs[32])
                                     parameters = {
                                         "direction": direction_text,
-                                        "extension_description": inputs[32],
-                                        "consistency_elements": inputs[33]
+                                        "extension_description": inputs[33],
+                                        "consistency_elements": inputs[34]
                                         }
                             
                             # Handle user prompts scenario
@@ -2541,9 +2566,9 @@ class ForgeKontextUnified(scripts.Script):
                             
                             # Handle dual-image scenario
                             if scenario == "dual_image":
-                                # Inputs[34]=scenario, [35]=param1, [36]=param2, [37]=param3, [38]=method, [39]=preservation
-                                # Additional inputs for character merge: [40]=arrangement_preset, [41]=interaction_type
-                                dual_scenario = inputs[34]
+                                # Inputs[35]=scenario, [36]=param1, [37]=param2, [38]=param3, [39]=method, [40]=preservation
+                                # Additional inputs for character merge: [41]=arrangement_preset, [42]=interaction_type
+                                dual_scenario = inputs[35]
                                 
                                 if dual_scenario not in dual_image_config.get("scenarios", {}):
                                     return "❌ Invalid dual-image scenario selected"
@@ -2554,7 +2579,7 @@ class ForgeKontextUnified(scripts.Script):
                                 field_keys = list(fields.keys())
                                 
                                 # Get integration method modifiers
-                                integration = inputs[38]
+                                integration = inputs[39]
                                 integration_modifiers = ""
                                 if integration in dual_image_config.get("integration_methods", {}):
                                     method_data = dual_image_config["integration_methods"][integration]
@@ -2568,7 +2593,7 @@ class ForgeKontextUnified(scripts.Script):
                                 # Replace placeholders based on field keys
                                 for i, field_key in enumerate(field_keys):
                                     if i < 3:  # We have up to 3 input fields
-                                        value = inputs[35 + i] if inputs[35 + i] else scenario_data.get("defaults", {}).get(field_key, "")
+                                        value = inputs[36 + i] if inputs[36 + i] else scenario_data.get("defaults", {}).get(field_key, "")
                                         # Escape any braces in user input to avoid template conflicts
                                         value = value.replace("{", "{{").replace("}", "}}")
                                         prompt = prompt.replace(f"{{{field_key}}}", value)
@@ -2576,21 +2601,21 @@ class ForgeKontextUnified(scripts.Script):
                                 # Special handling for character_merge to avoid empty "and"
                                 if dual_scenario == "character_merge":
                                     # Check if both characters are provided
-                                    char1 = inputs[35] if inputs[35] else ""
-                                    char2 = inputs[36] if inputs[36] else ""
+                                    char1 = inputs[36] if inputs[36] else ""
+                                    char2 = inputs[37] if inputs[37] else ""
                                     if not char2.strip():
                                         # If no second character, adjust the template
                                         prompt = prompt.replace(" and  together", " alone")
                                         prompt = prompt.replace("both ", "")
                                 
                                 # Handle character merge scenario with interaction modifiers
-                                if dual_scenario == "character_merge" and len(inputs) > 41:
+                                if dual_scenario == "character_merge" and len(inputs) > 42:
                                     # Get interaction style from unified config
-                                    interaction_key = inputs[41] if inputs[41] else "none"
+                                    interaction_key = inputs[42] if inputs[42] else "none"
                                     interaction_text = ""
                                     
                                     # First check if the arrangement already includes interaction
-                                    arrangement_value = inputs[40] if len(inputs) > 40 else ""
+                                    arrangement_value = inputs[41] if len(inputs) > 41 else ""
                                     has_builtin_interaction = False
                                     
                                     if arrangement_value and ":" in arrangement_value:
@@ -2720,7 +2745,7 @@ class ForgeKontextUnified(scripts.Script):
                     style_category.change(
                         fn=update_style_presets,
                         inputs=style_category,
-                        outputs=style_preset
+                        outputs=[style_preset, style_reference_prompt, preserve_elements]
                     )
                     
                     style_preset.change(
@@ -2966,16 +2991,16 @@ class ForgeKontextUnified(scripts.Script):
                         object_field, object_mode, position_field, style_modifier_field,  # 0-3
                         style_modifier_category, style_modifier_preset,  # 4-5 (NEW)
                         removal_scenario, fill_method,  # 6-7 (was 4-5)
-                        style_category, style_preset, style_details, preserve_elements,  # 8-11 (was 6-9)
-                        original_object, new_object, maintain_aspects,  # 12-14 (was 10-12)
-                        subject_field, new_pose, pose_details,  # 15-17 (was 13-15)
-                        emotion_subject, emotion_type, emotion_intensity,  # 18-20 (was 16-18)
-                        detail_area, enhancement_type, specific_changes,  # 21-23 (was 19-21)
-                        lighting_scenario, lighting_preset, lighting_effects, lighting_adjustments,  # 24-27 (was 22-25)
-                        restoration_type, restoration_method, quality_goal,  # 28-30 (was 26-28)
-                        outpaint_direction, extension_description, consistency_elements,  # 31-33 (was 29-31)
-                        dual_image_scenario, dual_param1, dual_param2, dual_param3, integration_method, preservation_options,  # 34-39 (NEW dual-image)
-                        unified_arrangement, interaction_style, custom_arrangement_field  # 40-42 (character merge options)
+                        style_category, style_preset, style_details, preserve_elements, style_reference_prompt,  # 8-12
+                        original_object, new_object, maintain_aspects,  # 13-15
+                        subject_field, new_pose, pose_details,  # 16-18
+                        emotion_subject, emotion_type, emotion_intensity,  # 19-21
+                        detail_area, enhancement_type, specific_changes,  # 22-24
+                        lighting_scenario, lighting_preset, lighting_effects, lighting_adjustments,  # 25-28
+                        restoration_type, restoration_method, quality_goal,  # 29-31
+                        outpaint_direction, extension_description, consistency_elements,  # 32-34
+                        dual_image_scenario, dual_param1, dual_param2, dual_param3, integration_method, preservation_options,  # 35-40
+                        unified_arrangement, interaction_style, custom_arrangement_field  # 41-43
                     ]
                     
                     # Wrapper function to handle both prompt and token display
