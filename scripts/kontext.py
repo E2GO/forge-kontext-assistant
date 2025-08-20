@@ -1644,22 +1644,131 @@ class ForgeKontextUnified(scripts.Script):
                                 value="the person's",
                                 interactive=True
                             )
-                            emotion_type = gradio.Dropdown(
-                                label="Emotion",
+                            # Multiple emotion dropdowns with intensity controls
+                            with gradio.Row():
+                                with gradio.Column():
+                                    emotion_basic = gradio.Dropdown(
+                                        label="Basic Emotions",
+                                        choices=[
+                                            "none",
+                                            "happy", "sad", "angry", "surprised", "disgusted", "fearful"
+                                        ],
+                                        value="happy",
+                                        interactive=True,
+                                        allow_custom_value=True
+                                    )
+                                    emotion_basic_intensity = gradio.Radio(
+                                        choices=["Subtle", "Default", "Very"],
+                                        value="Default",
+                                        interactive=True,
+                                        show_label=False,
+                                        container=False
+                                    )
+                                
+                                with gradio.Column():
+                                    emotion_positive = gradio.Dropdown(
+                                        label="Positive Emotions", 
+                                        choices=[
+                                            "none",
+                                            "joyful", "ecstatic", "blissful", "cheerful", "delighted", "elated",
+                                            "euphoric", "exhilarated", "gleeful", "jubilant", "overjoyed",
+                                            "radiant", "thrilled", "uplifted", "excited", "enthusiastic",
+                                            "optimistic", "hopeful", "content", "satisfied", "peaceful",
+                                            "serene", "calm", "relaxed", "tranquil"
+                                        ],
+                                        value="none",
+                                        interactive=True,
+                                        allow_custom_value=True
+                                    )
+                                    emotion_positive_intensity = gradio.Radio(
+                                        choices=["Subtle", "Default", "Very"],
+                                        value="Default",
+                                        interactive=True,
+                                        show_label=False,
+                                        container=False
+                                    )
+                                
+                                with gradio.Column():
+                                    emotion_negative = gradio.Dropdown(
+                                        label="Negative Emotions",
+                                        choices=[
+                                            "none",
+                                            "melancholy", "sorrowful", "grief-stricken", "heartbroken", "devastated",
+                                            "despairing", "dejected", "downcast", "gloomy", "miserable",
+                                            "furious", "enraged", "livid", "irate", "hostile", "resentful",
+                                            "bitter", "annoyed", "irritated", "frustrated", "agitated",
+                                            "anxious", "worried", "nervous", "stressed", "panicked",
+                                            "terrified", "horrified", "petrified", "alarmed", "startled"
+                                        ],
+                                        value="none",
+                                        interactive=True,
+                                        allow_custom_value=True
+                                    )
+                                    emotion_negative_intensity = gradio.Radio(
+                                        choices=["Subtle", "Default", "Very"],
+                                        value="Default",
+                                        interactive=True,
+                                        show_label=False,
+                                        container=False
+                                    )
+                                
+                                with gradio.Column():
+                                    emotion_complex = gradio.Dropdown(
+                                        label="Complex & Social",
+                                        choices=[
+                                            "none",
+                                            # Complex emotions
+                                            "confused", "perplexed", "bewildered", "puzzled", "curious",
+                                            "intrigued", "fascinated", "amazed", "astonished", "stunned",
+                                            "shocked", "flabbergasted", "dumbfounded", "speechless",
+                                            "thoughtful", "contemplative", "pensive", "reflective", "meditative",
+                                            "focused", "concentrated", "determined", "resolute", "steadfast",
+                                            "confident", "assured", "self-assured", "proud", "triumphant",
+                                            "smug", "arrogant", "condescending", "disdainful", "scornful",
+                                            # Social emotions
+                                            "shy", "bashful", "timid", "embarrassed", "ashamed", "guilty",
+                                            "remorseful", "apologetic", "regretful", "disappointed", "let-down",
+                                            "betrayed", "hurt", "wounded", "rejected", "lonely", "isolated",
+                                            "envious", "jealous", "spiteful", "vindictive",
+                                            "compassionate", "empathetic", "sympathetic", "caring", "loving",
+                                            "affectionate", "tender", "gentle", "warm", "kind",
+                                            # Expressive emotions
+                                            "laughing", "giggling", "chuckling", "smirking", "grinning",
+                                            "beaming", "glowing", "shining", "crying", "weeping",
+                                            "sobbing", "wailing", "screaming", "shouting", "yelling",
+                                            "whispering", "muttering", "sighing", "gasping", "panting"
+                                        ],
+                                        value="none",
+                                        interactive=True,
+                                        allow_custom_value=True
+                                    )
+                                    emotion_complex_intensity = gradio.Radio(
+                                        choices=["Subtle", "Default", "Very"],
+                                        value="Default",
+                                        interactive=True,
+                                        show_label=False,
+                                        container=False
+                                    )
+                            # Additional expression controls
+                            emotion_intensity_presets = gradio.CheckboxGroup(
+                                label="Expression Details",
                                 choices=[
-                                    "happy", "sad", "angry", "surprised", 
-                                    "thoughtful", "confident", "shy", 
-                                    "excited", "calm", "worried",
-                                    "laughing", "contemplative", "determined"
+                                    "natural and genuine",
+                                    "maintaining subject identity", 
+                                    "preserving composition",
+                                    "maintaining art style",
+                                    "emphasis on eye expression",
+                                    "complete facial involvement",
+                                    "matching body language"
                                 ],
-                                value="happy",
-                                interactive=True,
-                                allow_custom_value=True
+                                value=["maintaining art style", "maintaining subject identity"],
+                                interactive=True
                             )
-                            emotion_intensity = gradio.Textbox(
-                                label="Intensity/Details",
+                            
+                            emotion_intensity_custom = gradio.Textbox(
+                                label="Additional Custom Details",
                                 placeholder="e.g., with eyes crinkled, subtle expression",
-                                value="natural and genuine",
+                                value="",
                                 interactive=True
                             )
                         
@@ -2385,6 +2494,7 @@ class ForgeKontextUnified(scripts.Script):
                                 gradio.update(visible=False)
                             )
                     
+                    
                     # Show style details
                     def show_style_details(style_id):
                         """Display detailed information about selected style"""
@@ -2415,12 +2525,14 @@ class ForgeKontextUnified(scripts.Script):
                             # 8: style_category, 9: style_preset, 10: style_details, 11: preserve_elements, 12: style_reference_prompt,
                             # 13: original_object, 14: new_object, 15: maintain_aspects,
                             # 16: subject_field, 17: new_pose, 18: pose_details,
-                            # 19: emotion_subject, 20: emotion_type, 21: emotion_intensity,
-                            # 22: detail_area, 23: enhancement_type, 24: specific_changes,
-                            # 25: lighting_scenario, 26: lighting_preset, 27: lighting_effects, 28: lighting_adjustments,
-                            # 29: restoration_type, 30: restoration_method, 31: quality_goal,
-                            # 32: outpaint_direction, 33: extension_description, 34: consistency_elements,
-                            # 35-40: dual_image fields, 41-43: character merge fields
+                            # 19: emotion_subject, 20: emotion_basic, 21: emotion_positive, 22: emotion_negative, 23: emotion_complex,
+                            # 24: emotion_basic_intensity, 25: emotion_positive_intensity, 26: emotion_negative_intensity, 27: emotion_complex_intensity,
+                            # 28: emotion_intensity_presets, 29: emotion_intensity_custom,
+                            # 30: detail_area, 31: enhancement_type, 32: specific_changes,
+                            # 33: lighting_scenario, 34: lighting_preset, 35: lighting_effects, 36: lighting_adjustments,
+                            # 37: restoration_type, 38: restoration_method, 39: quality_goal,
+                            # 40: outpaint_direction, 41: extension_description, 42: consistency_elements,
+                            # 43-48: dual_image fields, 49-51: character merge fields
                             
                             # Handle combined object manipulation scenario
                             if scenario == "object_manipulation":
@@ -2485,38 +2597,78 @@ class ForgeKontextUnified(scripts.Script):
                                         "additional_details": inputs[18]
                                         }
                                 elif prompt_type == PromptType.EMOTION_CHANGE:
+                                    # Combine emotions from multiple dropdowns with intensities
+                                    emotion_parts = []
+                                    
+                                    # Collect selected emotions with their intensities
+                                    emotion_data = [
+                                        (inputs[20], inputs[24]),  # emotion_basic, emotion_basic_intensity
+                                        (inputs[21], inputs[25]),  # emotion_positive, emotion_positive_intensity  
+                                        (inputs[22], inputs[26]),  # emotion_negative, emotion_negative_intensity
+                                        (inputs[23], inputs[27]),  # emotion_complex, emotion_complex_intensity
+                                    ]
+                                    
+                                    for emotion, intensity in emotion_data:
+                                        if emotion and emotion.strip() and emotion != "none":
+                                            # Apply intensity modifier
+                                            emotion_text = emotion.strip()
+                                            if intensity == "Subtle":
+                                                emotion_text = f"slightly {emotion_text}"
+                                            elif intensity == "Very":
+                                                emotion_text = f"very {emotion_text}"
+                                            # "Default" uses emotion as-is
+                                            
+                                            emotion_parts.append(emotion_text)
+                                    
+                                    # Use "happy" as fallback if no emotions selected
+                                    combined_emotion = " and ".join(emotion_parts) if emotion_parts else "happy"
+                                    
+                                    # Combine additional intensity presets and custom text
+                                    intensity_presets = inputs[28]  # emotion_intensity_presets (list)
+                                    custom_intensity = inputs[29]   # emotion_intensity_custom
+                                    
+                                    # Build combined intensity string
+                                    intensity_parts = []
+                                    if intensity_presets:
+                                        intensity_parts.extend(intensity_presets)
+                                    if custom_intensity and custom_intensity.strip():
+                                        intensity_parts.append(custom_intensity.strip())
+                                    
+                                    # Join all parts with commas
+                                    intensity_value = ", ".join(intensity_parts) if intensity_parts else "natural and genuine"
+                                    
                                     parameters = {
                                         "subject": inputs[19],
-                                        "emotion": inputs[20],
-                                        "intensity": inputs[21]
+                                        "emotion": combined_emotion,
+                                        "intensity": intensity_value
                                         }
                                 elif prompt_type == PromptType.DETAIL_ENHANCEMENT:
                                     parameters = {
-                                        "area": inputs[22],
-                                        "enhancement_type": inputs[23],
-                                        "specific_changes": inputs[24]
+                                        "area": inputs[30],
+                                        "enhancement_type": inputs[31],
+                                        "specific_changes": inputs[32]
                                         }
                                 elif prompt_type == PromptType.LIGHTING_CHANGE:
-                                    # Inputs[25] = lighting_scenario, [26] = preset, [27] = effects, [28] = adjustments
-                                    effects_list = inputs[27] if inputs[27] else []
+                                    # Inputs[33] = lighting_scenario, [34] = preset, [35] = effects, [36] = adjustments
+                                    effects_list = inputs[35] if inputs[35] else []
                                     
                                     # Build parameters differently based on whether effects are provided
                                     if effects_list:
                                         effects_str = ", ".join(effects_list)
                                         parameters = {
-                                            "lighting_type": inputs[26] if inputs[26] else inputs[25],
+                                            "lighting_type": inputs[34] if inputs[34] else inputs[33],
                                             "specific_effects": effects_str,
-                                            "adjustments": inputs[28] if inputs[28] else "while maintaining subject details"
+                                            "adjustments": inputs[36] if inputs[36] else "while maintaining subject details"
                                             }
                                     else:
                                         # If no effects, combine lighting type and adjustments directly
                                         parameters = {
-                                            "lighting_type": inputs[26] if inputs[26] else inputs[25],
-                                            "specific_effects": inputs[28] if inputs[28] else "while maintaining subject details",
+                                            "lighting_type": inputs[34] if inputs[34] else inputs[33],
+                                            "specific_effects": inputs[36] if inputs[36] else "while maintaining subject details",
                                             "adjustments": ""  # Empty to avoid double spacing
                                             }
                                 elif prompt_type == PromptType.IMAGE_ENHANCEMENT:
-                                    # Inputs[29] = enhancement_type, [30] = method, [31] = quality_goal
+                                    # Inputs[37] = enhancement_type, [38] = method, [39] = quality_goal
                                     enhancement_map = {
                                             EnhancementScenario.FACIAL_DETAILS.value: "facial features",
                                         EnhancementScenario.EYE_ENHANCEMENT.value: "the eyes",
@@ -2533,14 +2685,14 @@ class ForgeKontextUnified(scripts.Script):
                                         EnhancementScenario.FADED_COLORS.value: "faded colors",
                                         EnhancementScenario.GENERAL_ENHANCEMENT.value: "overall image quality"
                                     }
-                                    enhancement_text = enhancement_map.get(inputs[29], inputs[29])
+                                    enhancement_text = enhancement_map.get(inputs[37], inputs[37])
                                     parameters = {
                                         "enhancement_target": enhancement_text,
-                                        "method": inputs[30],
-                                        "quality_goal": inputs[31]
+                                        "method": inputs[38],
+                                        "quality_goal": inputs[39]
                                         }
                                 elif prompt_type == PromptType.OUTPAINTING:
-                                    # Inputs[32] = direction, [33] = extension_description, [34] = consistency
+                                    # Inputs[40] = direction, [41] = extension_description, [42] = consistency
                                     direction_map = {
                                         OutpaintingDirection.HORIZONTAL.value: "the landscape horizontally",
                                         OutpaintingDirection.VERTICAL.value: "the scene vertically",
@@ -2552,11 +2704,11 @@ class ForgeKontextUnified(scripts.Script):
                                         OutpaintingDirection.WIDESCREEN.value: "to widescreen format",
                                         OutpaintingDirection.SQUARE.value: "to square format"
                                         }
-                                    direction_text = direction_map.get(inputs[32], inputs[32])
+                                    direction_text = direction_map.get(inputs[40], inputs[40])
                                     parameters = {
                                         "direction": direction_text,
-                                        "extension_description": inputs[33],
-                                        "consistency_elements": inputs[34]
+                                        "extension_description": inputs[41],
+                                        "consistency_elements": inputs[42]
                                         }
                             
                             # Handle user prompts scenario
@@ -2566,9 +2718,9 @@ class ForgeKontextUnified(scripts.Script):
                             
                             # Handle dual-image scenario
                             if scenario == "dual_image":
-                                # Inputs[35]=scenario, [36]=param1, [37]=param2, [38]=param3, [39]=method, [40]=preservation
-                                # Additional inputs for character merge: [41]=arrangement_preset, [42]=interaction_type
-                                dual_scenario = inputs[35]
+                                # Inputs[43]=scenario, [44]=param1, [45]=param2, [46]=param3, [47]=method, [48]=preservation
+                                # Additional inputs for character merge: [49]=arrangement_preset, [50]=interaction_type
+                                dual_scenario = inputs[43]
                                 
                                 if dual_scenario not in dual_image_config.get("scenarios", {}):
                                     return "❌ Invalid dual-image scenario selected"
@@ -2579,7 +2731,7 @@ class ForgeKontextUnified(scripts.Script):
                                 field_keys = list(fields.keys())
                                 
                                 # Get integration method modifiers
-                                integration = inputs[39]
+                                integration = inputs[47]
                                 integration_modifiers = ""
                                 if integration in dual_image_config.get("integration_methods", {}):
                                     method_data = dual_image_config["integration_methods"][integration]
@@ -2601,21 +2753,21 @@ class ForgeKontextUnified(scripts.Script):
                                 # Special handling for character_merge to avoid empty "and"
                                 if dual_scenario == "character_merge":
                                     # Check if both characters are provided
-                                    char1 = inputs[36] if inputs[36] else ""
-                                    char2 = inputs[37] if inputs[37] else ""
+                                    char1 = inputs[44] if inputs[44] else ""
+                                    char2 = inputs[45] if inputs[45] else ""
                                     if not char2.strip():
                                         # If no second character, adjust the template
                                         prompt = prompt.replace(" and  together", " alone")
                                         prompt = prompt.replace("both ", "")
                                 
                                 # Handle character merge scenario with interaction modifiers
-                                if dual_scenario == "character_merge" and len(inputs) > 42:
+                                if dual_scenario == "character_merge" and len(inputs) > 50:
                                     # Get interaction style from unified config
-                                    interaction_key = inputs[42] if inputs[42] else "none"
+                                    interaction_key = inputs[50] if inputs[50] else "none"
                                     interaction_text = ""
                                     
                                     # First check if the arrangement already includes interaction
-                                    arrangement_value = inputs[41] if len(inputs) > 41 else ""
+                                    arrangement_value = inputs[49] if len(inputs) > 49 else ""
                                     has_builtin_interaction = False
                                     
                                     if arrangement_value and ":" in arrangement_value:
@@ -2645,7 +2797,7 @@ class ForgeKontextUnified(scripts.Script):
                                         prompt = prompt.replace(placeholder, integration_modifiers)
                                 
                                 # Add preservation options if selected
-                                preservation = inputs[39]
+                                preservation = inputs[48]
                                 if preservation:
                                     preservation_text = ", preserving " + ", ".join(preservation).lower()
                                     prompt += preservation_text
@@ -2775,6 +2927,7 @@ class ForgeKontextUnified(scripts.Script):
                         inputs=style_modifier_category,
                         outputs=[style_modifier_preset, style_modifier_field]
                     )
+                    
                     
                     # Dual-image scenario change handler
                     def update_dual_image_fields(scenario):
@@ -2994,13 +3147,15 @@ class ForgeKontextUnified(scripts.Script):
                         style_category, style_preset, style_details, preserve_elements, style_reference_prompt,  # 8-12
                         original_object, new_object, maintain_aspects,  # 13-15
                         subject_field, new_pose, pose_details,  # 16-18
-                        emotion_subject, emotion_type, emotion_intensity,  # 19-21
-                        detail_area, enhancement_type, specific_changes,  # 22-24
-                        lighting_scenario, lighting_preset, lighting_effects, lighting_adjustments,  # 25-28
-                        restoration_type, restoration_method, quality_goal,  # 29-31
-                        outpaint_direction, extension_description, consistency_elements,  # 32-34
-                        dual_image_scenario, dual_param1, dual_param2, dual_param3, integration_method, preservation_options,  # 35-40
-                        unified_arrangement, interaction_style, custom_arrangement_field  # 41-43
+                        emotion_subject, emotion_basic, emotion_positive, emotion_negative, emotion_complex, 
+                        emotion_basic_intensity, emotion_positive_intensity, emotion_negative_intensity, emotion_complex_intensity,
+                        emotion_intensity_presets, emotion_intensity_custom,  # 19-29
+                        detail_area, enhancement_type, specific_changes,  # 30-32
+                        lighting_scenario, lighting_preset, lighting_effects, lighting_adjustments,  # 33-36
+                        restoration_type, restoration_method, quality_goal,  # 37-39
+                        outpaint_direction, extension_description, consistency_elements,  # 40-42
+                        dual_image_scenario, dual_param1, dual_param2, dual_param3, integration_method, preservation_options,  # 43-48
+                        unified_arrangement, interaction_style, custom_arrangement_field  # 49-51
                     ]
                     
                     # Wrapper function to handle both prompt and token display

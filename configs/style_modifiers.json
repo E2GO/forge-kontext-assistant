@@ -181,6 +181,53 @@
       ]
     }
   },
+  "emotion_intensity_presets": {
+    "natural_genuine": {
+      "name": "Natural & Genuine",
+      "value": "natural and genuine",
+      "description": "Default natural expression"
+    },
+    "preserve_identity": {
+      "name": "While Preserving Subject Identity",
+      "value": "while maintaining subject identity",
+      "description": "Keep the person recognizable"
+    },
+    "preserve_composition": {
+      "name": "While Preserving Composition",
+      "value": "while preserving composition",
+      "description": "Keep the overall scene layout"
+    },
+    "preserve_style": {
+      "name": "While Preserving Art Style",
+      "value": "while maintaining the art style",
+      "description": "Keep the artistic rendering style"
+    },
+    "subtle_expression": {
+      "name": "Subtle Expression",
+      "value": "with subtle, understated expression",
+      "description": "Gentle, mild emotional display"
+    },
+    "intense_expression": {
+      "name": "Intense Expression",
+      "value": "with intense, dramatic expression",
+      "description": "Strong, pronounced emotional display"
+    },
+    "eyes_focused": {
+      "name": "Eyes Focused",
+      "value": "with emphasis on eye expression",
+      "description": "Highlight emotion in the eyes"
+    },
+    "full_face": {
+      "name": "Full Facial Expression",
+      "value": "with complete facial involvement",
+      "description": "Engage all facial features"
+    },
+    "body_language": {
+      "name": "Include Body Language",
+      "value": "including matching body language",
+      "description": "Express emotion through posture too"
+    }
+  },
   "custom_modifiers": {
     "name": "Custom",
     "icon": "✏️",

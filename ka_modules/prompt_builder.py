@@ -470,7 +470,16 @@ class PromptBuilder:
         elif placeholder == "position":
             suggestions = self.position_descriptors
         elif placeholder == "emotion":
-            suggestions = ["happy", "sad", "angry", "surprised", "thoughtful", "confident", "shy", "excited", "calm", "worried"]
+            suggestions = [
+                # Basic emotions
+                "happy", "sad", "angry", "surprised", "disgusted", "fearful",
+                # Popular choices  
+                "joyful", "excited", "calm", "worried", "confident", "shy",
+                "thoughtful", "determined", "curious", "amazed", "peaceful",
+                "frustrated", "anxious", "delighted", "contemplative", "focused",
+                # Expressive
+                "laughing", "crying", "smiling", "frowning", "grinning", "sighing"
+            ]
         elif placeholder == "style_modifier":
             suggestions = ["seamlessly integrated", "matching the lighting", "with realistic shadows", "in the same art style", "naturally blended"]
         elif placeholder == "pose" or placeholder == "new_pose":
